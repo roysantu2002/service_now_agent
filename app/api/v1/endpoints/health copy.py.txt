@@ -1,0 +1,92 @@
+"""Health check endpoints."""
+from fastapi import APIRouter, Depends
+from typing import Dict, Any
+import structlog
+
+from app.services.servicenow import ServiceNowConnector
+# from app.services.openai_service import OpenAIConnector
+# from app.services.compliance import ComplianceFilter
+
+logger = structlog.get_logger(__name__)
+router = APIRouter()
+
+
+@router.get("/")
+async def health_check() -> Dict[str, Any]:
+    """Basic health check endpoint."""
+    return {
+        "status": "healthy",
+        "service": "ServiceNow Incident Processor",
+        "version": "1.0.0"
+    }
+
+
+@router.get("/detailed")
+async def detailed_health_check() -> Dict[str, Any]:
+    """Detailed health check for all services."""
+    logger.info("Performing detailed health check")
+    
+    # Initialize services
+    servicenow = ServiceNowConnector()
+    # openai_service = OpenAIConnector()
+    # compliance_filter = ComplianceFilter()
+    
+    health_status = {
+        "status": "healthy",
+        "timestamp": "2024-01-01T00:00:00Z",
+        "services": {}
+    }
+    
+    # Check ServiceNow
+    try:
+        servicenow_healthy = await servicenow.health_check()
+        health_status["services"]["servicenow"] = {
+            "status": "healthy" if servicenow_healthy else "unhealthy",
+            "details": "ServiceNow API connection"
+        }
+    except Exception as e:
+        health_status["services"]["servicenow"] = {
+            "status": "unhealthy",
+            "details": f"Error: {str(e)}"
+        }
+    
+    # Check OpenAI
+    # try:
+    #     openai_healthy = await openai_service.health_check()
+    #     health_status["services"]["openai"] = {
+    #         "status": "healthy" if openai_healthy else "unhealthy",
+    #         "details": "OpenAI API connection"
+    #     }
+    # except Exception as e:
+    #     health_status["services"]["openai"] = {
+    #         "status": "unhealthy",
+    #         "details": f"Error: {str(e)}"
+    #     }
+    
+    # Check Compliance Filter
+    # try:
+    #     compliance_healthy = await compliance_filter.health_check()
+    #     health_status["services"]["compliance"] = {
+    #         "status": "healthy" if compliance_healthy else "unhealthy",
+    #         "details": "Compliance filtering service"
+    #     }
+    # except Exception as e:
+    #     health_status["services"]["compliance"] = {
+    #         "status": "unhealthy",
+    #         "details": f"Error: {str(e)}"
+    #     }
+    
+    # Overall status
+    all_healthy = all(
+        service["status"] == "healthy" 
+        for service in health_status["services"].values()
+    )
+    health_status["status"] = "healthy" if all_healthy else "degraded"
+    
+    # Cleanup connections
+    await servicenow.disconnect()
+    # await openai_service.disconnect()
+    
+    logger.info("Health check completed", overall_status=health_status["status"])
+    
+    return health_status

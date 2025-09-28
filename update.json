@@ -1,0 +1,18 @@
+{
+  "short_description": "Network port hung on server XYZ",
+  "description": "The network port on server XYZ has become unresponsive. Attempts to reset the interface via standard procedures have failed. Immediate attention required to restore connectivity.",
+  "work_notes": "Initial investigation shows the port is not responding to ping or interface reset commands. Logged for further analysis.",
+  "priority": "2",
+  "urgency": "2",
+  "impact": "2",
+  "category": "network",
+  "subcategory": "port issue",
+  "assigned_to": "",
+  "assignment_group": "Network Operations",
+  "caller_id": "70af4994c3107210e66adaec050131bb",
+  "additional_fields": {
+    "server_name": "XYZ",
+    "interface": "eth0",
+    "location": "Data Center 1"
+  }
+}

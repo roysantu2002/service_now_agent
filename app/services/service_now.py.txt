@@ -1,0 +1,371 @@
+"""ServiceNow integration service implementation with fixed imports."""
+import httpx
+import structlog
+from typing import Dict, Any, List, Optional
+from datetime import datetime
+from urllib.parse import urljoin
+
+from app.abstracts.servicenow_connector import (
+    BaseServiceNowConnector,
+    IncidentData,
+    ServiceNowQuery,
+    ServiceNowResponse
+)
+from app.core.config import get_settings
+from app.exceptions.servicenow import ServiceNowError, ServiceNowNotFoundError
+
+logger = structlog.get_logger(__name__)
+
+
+class ServiceNowConnector(BaseServiceNowConnector):
+    """ServiceNow REST API connector implementation."""
+    
+    def __init__(self):
+        super().__init__()
+        self.settings = get_settings()
+        self.base_url = self.settings.SERVICE_NOW_REST_API_URL.rstrip('/')
+        self.username = self.settings.SERVICE_NOW_USER
+        self.password = self.settings.SERVICE_NOW_PASSWORD
+        self.timeout = self.settings.SERVICENOW_TIMEOUT
+        self.client: Optional[httpx.AsyncClient] = None
+    
+    async def initialize(self) -> None:
+        """Initialize the ServiceNow connector."""
+        self.client = httpx.AsyncClient(
+            auth=(self.username, self.password),
+            timeout=self.timeout,
+            headers={
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
+        )
+        logger.info("ServiceNow connector initialized", base_url=self.base_url)
+    
+    async def health_check(self) -> bool:
+        """Check if ServiceNow is accessible."""
+        try:
+            if not self.client:
+                await self.initialize()
+            
+            response = await self.client.get(f"{self.base_url}/api/now/table/sys_user")
+            return response.status_code == 200
+        except Exception as e:
+            logger.error("ServiceNow health check failed", error=str(e))
+            return False
+    
+    async def connect(self) -> bool:
+        """Establish connection to ServiceNow."""
+        try:
+            await self.initialize()
+            return await self.test_connection()
+        except Exception as e:
+            logger.error("Failed to connect to ServiceNow", error=str(e))
+            return False
+    
+    async def disconnect(self) -> None:
+        """Close connection to ServiceNow."""
+        if self.client:
+            await self.client.aclose()
+            self.client = None
+            logger.info("ServiceNow connection closed")
+    
+    async def test_connection(self) -> bool:
+        """Test the connection to ServiceNow."""
+        try:
+            if not self.client:
+                await self.initialize()
+            
+            # Test with a simple query
+            response = await self.client.get(
+                f"{self.base_url}/api/now/table/incident",
+                params={'sysparm_limit': 1}
+            )
+            
+            logger.info("Connection test response", 
+                       status_code=response.status_code,
+                       content_type=response.headers.get('content-type', 'unknown'))
+            
+            if response.status_code == 401:
+                logger.error("Authentication failed during connection test")
+                return False
+            
+            if response.status_code == 403:
+                logger.error("Access forbidden during connection test")
+                return False
+            
+            success = response.status_code == 200
+            if success:
+                # Try to parse JSON to ensure we get valid responses
+                try:
+                    data = response.json()
+                    logger.info("ServiceNow connection test successful", 
+                               result_count=len(data.get('result', [])))
+                except ValueError:
+                    logger.error("Connection test returned non-JSON response")
+                    return False
+            else:
+                logger.error(
+                    "ServiceNow connection test failed", 
+                    status_code=response.status_code,
+                    response=response.text[:200]
+                )
+            return success
+            
+        except Exception as e:
+            logger.error("ServiceNow connection test error", error=str(e))
+            return False
+    
+    def validate_credentials(self) -> bool:
+        """Validate ServiceNow credentials."""
+        return bool(
+            self.username and 
+            self.password and 
+            self.base_url
+        )
+    
+    async def get_incident(self, sys_id: str) -> IncidentData:
+        """Get incident by sys_id."""
+        if not self.client:
+            await self.initialize()
+        
+        try:
+            url = f"{self.base_url}/api/now/table/incident/{sys_id}"
+            logger.info("Fetching incident", sys_id=sys_id, url=url)
+            
+            response = await self.client.get(url)
+            
+            logger.info("ServiceNow API response", 
+                       status_code=response.status_code,
+                       content_type=response.headers.get('content-type', 'unknown'),
+                       response_length=len(response.content))
+            
+            if response.status_code == 404:
+                raise ServiceNowNotFoundError(f"Incident with sys_id {sys_id} not found")
+            
+            if response.status_code == 401:
+                raise ServiceNowError("Authentication failed - check ServiceNow credentials")
+            
+            if response.status_code == 403:
+                raise ServiceNowError("Access forbidden - check ServiceNow permissions")
+            
+            # Check if response is empty
+            if not response.content:
+                raise ServiceNowError("Empty response from ServiceNow API")
+            
+            # Check content type
+            content_type = response.headers.get('content-type', '').lower()
+            if 'application/json' not in content_type:
+                logger.error("Non-JSON response from ServiceNow", 
+                           content_type=content_type,
+                           response_text=response.text[:500])  # Log first 500 chars
+                raise ServiceNowError(f"ServiceNow returned non-JSON response: {content_type}")
+            
+            response.raise_for_status()
+            
+            try:
+                data = response.json()
+            except ValueError as json_error:
+                logger.error("Failed to parse JSON response", 
+                           error=str(json_error),
+                           response_text=response.text[:500])
+                raise ServiceNowError(f"Invalid JSON response from ServiceNow: {str(json_error)}")
+            
+            if 'result' not in data:
+                logger.error("Invalid response format", response_data=data)
+                raise ServiceNowError("Invalid response format from ServiceNow - missing 'result' field")
+            
+            incident_data = data['result']
+            logger.info("Successfully fetched incident", sys_id=sys_id)
+            
+            return self._parse_incident_data(incident_data)
+            
+        except (ServiceNowError, ServiceNowNotFoundError):
+            # Re-raise our custom exceptions
+            raise
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                "HTTP error fetching incident", 
+                sys_id=sys_id,
+                status_code=e.response.status_code,
+                response=e.response.text[:500]
+            )
+            raise ServiceNowError(f"HTTP {e.response.status_code}: {e.response.text[:200]}")
+        except httpx.RequestError as e:
+            logger.error("Network error fetching incident", sys_id=sys_id, error=str(e))
+            raise ServiceNowError(f"Network error connecting to ServiceNow: {str(e)}")
+        except Exception as e:
+            logger.error("Unexpected error fetching incident", sys_id=sys_id, error=str(e))
+            raise ServiceNowError(f"Unexpected error: {str(e)}")
+    
+    async def query_incidents(self, query: ServiceNowQuery) -> List[IncidentData]:
+        """Query incidents with filters."""
+        if not self.client:
+            await self.initialize()
+        
+        try:
+            url = f"{self.base_url}/api/now/table/{query.table}"
+            params = {}
+            
+            if query.query:
+                params['sysparm_query'] = query.query
+            if query.fields:
+                params['sysparm_fields'] = ','.join(query.fields)
+            if query.limit:
+                params['sysparm_limit'] = query.limit
+            if query.offset:
+                params['sysparm_offset'] = query.offset
+            
+            logger.info("Querying incidents", params=params)
+            
+            response = await self.client.get(url, params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            incidents = []
+            
+            for incident_data in data.get('result', []):
+                incidents.append(self._parse_incident_data(incident_data))
+            
+            logger.info("Successfully queried incidents", count=len(incidents))
+            return incidents
+            
+        except Exception as e:
+            logger.error("Error querying incidents", error=str(e))
+            raise
+    
+    async def update_incident(
+        self, 
+        sys_id: str,
+        updates: Dict[str, Any]
+    ) -> ServiceNowResponse:
+        """Update incident data."""
+        if not self.client:
+            await self.initialize()
+        
+        try:
+            url = f"{self.base_url}/api/now/table/incident/{sys_id}"
+            
+            logger.info("Updating incident", sys_id=sys_id, updates=updates)
+            
+            start_time = datetime.now()
+            response = await self.client.patch(url, json=updates)
+            response_time = (datetime.now() - start_time).total_seconds()
+            
+            success = response.status_code == 200
+            
+            return ServiceNowResponse(
+                success=success,
+                data=response.json() if success else None,
+                error=response.text if not success else None,
+                status_code=response.status_code,
+                response_time=response_time
+            )
+            
+        except Exception as e:
+            logger.error("Error updating incident", sys_id=sys_id, error=str(e))
+            return ServiceNowResponse(
+                success=False,
+                error=str(e),
+                status_code=500,
+                response_time=0.0
+            )
+    
+    async def add_work_note(
+        self, 
+        sys_id: str,
+        note: str
+    ) -> ServiceNowResponse:
+        """Add work note to incident."""
+        updates = {'work_notes': note}
+        return await self.update_incident(sys_id, updates)
+    
+    async def get_incident_history(self, sys_id: str) -> List[Dict[str, Any]]:
+        """Get incident history/audit trail."""
+        if not self.client:
+            await self.initialize()
+        
+        try:
+            url = f"{self.base_url}/api/now/table/sys_audit"
+            params = {
+                'sysparm_query': f'tablename=incident^documentkey={sys_id}',
+                'sysparm_order_by': 'sys_created_on'
+            }
+            
+            logger.info("Fetching incident history", sys_id=sys_id)
+            
+            response = await self.client.get(url, params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            history = data.get('result', [])
+            
+            logger.info("Successfully fetched incident history", 
+                       sys_id=sys_id, count=len(history))
+            return history
+            
+        except Exception as e:
+            logger.error("Error fetching incident history", sys_id=sys_id, error=str(e))
+            raise
+    
+    def _parse_incident_data(self, raw_data: Dict[str, Any]) -> IncidentData:
+        """Parse raw ServiceNow incident data into IncidentData model."""
+        try:
+            # Parse datetime fields
+            opened_at = self._parse_datetime(raw_data.get('opened_at', ''))
+            updated_at = self._parse_datetime(raw_data.get('sys_updated_on', ''))
+            resolved_at = self._parse_datetime(raw_data.get('resolved_at')) if raw_data.get('resolved_at') else None
+            
+            # Extract core fields
+            incident = IncidentData(
+                sys_id=raw_data.get('sys_id', ''),
+                number=raw_data.get('number', ''),
+                short_description=raw_data.get('short_description', ''),
+                description=raw_data.get('description'),
+                state=raw_data.get('state', ''),
+                priority=raw_data.get('priority', ''),
+                urgency=raw_data.get('urgency', ''),
+                impact=raw_data.get('impact', ''),
+                category=raw_data.get('category'),
+                subcategory=raw_data.get('subcategory'),
+                assigned_to=raw_data.get('assigned_to', {}).get('display_value') if isinstance(raw_data.get('assigned_to'), dict) else raw_data.get('assigned_to'),
+                assignment_group=raw_data.get('assignment_group', {}).get('display_value') if isinstance(raw_data.get('assignment_group'), dict) else raw_data.get('assignment_group'),
+                caller_id=raw_data.get('caller_id', {}).get('display_value') if isinstance(raw_data.get('caller_id'), dict) else raw_data.get('caller_id'),
+                opened_at=opened_at,
+                updated_at=updated_at,
+                resolved_at=resolved_at,
+                notes=raw_data.get('comments'),
+                work_notes=raw_data.get('work_notes'),
+                additional_fields={k: v for k, v in raw_data.items() 
+                                 if k not in self._get_core_fields()}
+            )
+            
+            return incident
+            
+        except Exception as e:
+            logger.error("Error parsing incident data", error=str(e), raw_data=raw_data)
+            raise ValueError(f"Failed to parse incident data: {str(e)}")
+    
+    def _parse_datetime(self, date_str: str) -> datetime:
+        """Parse ServiceNow datetime string."""
+        if not date_str:
+            return datetime.now()
+        
+        try:
+            # ServiceNow format: YYYY-MM-DD HH:MM:SS
+            return datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+        except ValueError:
+            try:
+                # Alternative format
+                return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            except ValueError:
+                logger.warning("Could not parse datetime", date_str=date_str)
+                return datetime.now()
+    
+    def _get_core_fields(self) -> set:
+        """Get set of core incident fields."""
+        return {
+            'sys_id', 'number', 'short_description', 'description', 'state',
+            'priority', 'urgency', 'impact', 'category', 'subcategory',
+            'assigned_to', 'assignment_group', 'caller_id', 'opened_at',
+            'sys_updated_on', 'resolved_at', 'comments', 'work_notes'
+        }
