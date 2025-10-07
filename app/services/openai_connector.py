@@ -1,4 +1,6 @@
 """OpenAI integration service implementation."""
+import json
+import traceback
 import openai
 import structlog
 from typing import Dict, Any, List, Optional
@@ -100,54 +102,85 @@ class OpenAIConnector(BaseAIConnector):
         
         return True
     
-    async def generate_text(self, request: AIRequest) -> AIResponse:
-        """Generate text using OpenAI."""
+    async def generate_text(self, request: dict) -> AIResponse:
+        """
+        Generate text using OpenAI.
+        Expects request dict with keys:
+            - prompt (str)
+            - context (dict, optional)
+            - max_tokens (int, optional)
+            - temperature (float, optional)
+            - model (str, optional)
+        """
         if not self.client:
             await self.initialize()
-        
-        if not self.validate_request(request):
-            raise ValueError("Invalid AI request parameters")
-        
+
+        prompt = request.get("prompt")
+        print(f"prompt: {prompt}")
+        if not prompt:
+            raise ValueError("Missing 'prompt' in request")
+
+        context = request.get("context", {})
+        max_tokens = request.get("max_tokens", getattr(self, "max_tokens", 1000))
+        temperature = request.get("temperature", 0.7)
+        model = request.get("model", getattr(self, "model", "gpt-4o-mini"))
+
         try:
-            messages = [{"role": "user", "content": request.prompt}]
-            
-            # Add context if provided
-            if request.context:
-                context_message = f"Context: {request.context}"
-                messages.insert(0, {"role": "system", "content": context_message})
-            
-            logger.info("Generating text with OpenAI", 
-                       model=request.model or self.model,
-                       max_tokens=request.max_tokens or self.max_tokens)
-            
+            # Build messages
+            messages = []
+            if context:
+                messages.append({
+                    "role": "system",
+                    "content": f"You are an AI assistant. Context: {json.dumps(context)}"
+                })
+            else:
+                messages.append({
+                    "role": "system",
+                    "content": "You are an AI assistant that returns structured JSON output following the specified schema."
+                })
+
+            messages.append({"role": "user", "content": prompt})
+
+            logger.info(
+                "Generating text with OpenAI",
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature
+            )
+
+            # Call OpenAI
             response = await self.client.chat.completions.create(
-                model=request.model or self.model,
+                model=model,
                 messages=messages,
-                max_tokens=request.max_tokens or self.max_tokens,
-                temperature=request.temperature or 0.7
+                max_tokens=max_tokens,
+                temperature=temperature
             )
-            
+
             choice = response.choices[0]
+            content = getattr(choice.message, "content", str(choice.message))
+
             usage_info = {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens
-            } if response.usage else None
-            
+                "prompt_tokens": getattr(response.usage, "prompt_tokens", None),
+                "completion_tokens": getattr(response.usage, "completion_tokens", None),
+                "total_tokens": getattr(response.usage, "total_tokens", None)
+            } if hasattr(response, "usage") else None
+
             ai_response = AIResponse(
-                content=choice.message.content,
+                content=content,
                 usage=usage_info,
-                model=response.model,
-                finish_reason=choice.finish_reason
+                model=getattr(response, "model", model),
+                finish_reason=getattr(choice, "finish_reason", None)
             )
-            
-            logger.info("Text generation completed", 
-                       tokens_used=usage_info.get('total_tokens') if usage_info else None)
-            
+
+            logger.info(
+                "Text generation completed",
+                tokens_used=usage_info.get("total_tokens") if usage_info else None
+            )
+
             return ai_response
-            
+
         except Exception as e:
-            logger.error("Error generating text", error=str(e))
+            logger.error("Error generating text", error=str(e), traceback=traceback.format_exc())
             raise
     
     async def analyze_incident(

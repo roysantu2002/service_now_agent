@@ -52,9 +52,18 @@ class IncidentSummary(BaseModel):
     summary: Optional[str] = None
     additional_fields: Optional[Dict[str, Any]] = None
     
+# class IncidentAnalysisModel(BaseModel):
+#     id: str = Field(..., description="Auto-generated ID for the analysis")
+#     issue: str = Field(..., description="Short title or summary of the issue")
+#     description: str = Field(..., description="Detailed description of the incident")
+#     steps_to_resolve: List[str] = Field(..., description="Minimum 10 detailed steps to resolve the issue")
+#     technical_details: str = Field(..., description="Technical information and context")
+#     complete_description: str = Field(..., description="Comprehensive write-up combining all insights and recommendations")
+
 class IncidentAnalysisModel(BaseModel):
     id: str = Field(..., description="Auto-generated ID for the analysis")
     issue: str = Field(..., description="Short title or summary of the issue")
+    issue_category: str = Field(..., description="Category of the issue, e.g., Network, Hardware, Software")
     description: str = Field(..., description="Detailed description of the incident")
     steps_to_resolve: List[str] = Field(..., description="Minimum 10 detailed steps to resolve the issue")
     technical_details: str = Field(..., description="Technical information and context")
