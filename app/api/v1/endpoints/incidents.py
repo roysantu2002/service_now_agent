@@ -1,6 +1,6 @@
 """Incident processing endpoints with lazy dependency injection to avoid circular imports."""
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Dict, Any, Optional
 import structlog
 from datetime import datetime
@@ -14,7 +14,6 @@ from app.models.incident import (
 )
 from app.exceptions.servicenow import ServiceNowError, ServiceNowNotFoundError
 
-
 logger = structlog.get_logger(__name__)
 router = APIRouter()
 
@@ -22,12 +21,13 @@ router = APIRouter()
 # -------------------------
 # Lazy dependency
 # -------------------------
-def get_incident_processor():
+def get_incident_processor(provider: Optional[str] = Query(None)):
     """
     Lazily import IncidentProcessor to avoid circular imports.
+    Optionally allow switching AI provider at runtime.
     """
     from app.services.incident_processor import IncidentProcessor
-    return IncidentProcessor()
+    return IncidentProcessor(provider_name=provider)
 
 
 # -------------------------
@@ -37,6 +37,7 @@ def get_incident_processor():
 async def process_incident(
     sys_id: str,
     request: Optional[IncidentProcessRequest] = None,
+    provider: Optional[str] = Query(None),
     processor=Depends(get_incident_processor)
 ) -> IncidentProcessResponse:
     if not request:
@@ -74,6 +75,7 @@ async def process_incident(
 @router.get("/{sys_id}/summary", response_model=IncidentSummary)
 async def get_incident_summary(
     sys_id: str,
+    provider: Optional[str] = Query(None),
     processor=Depends(get_incident_processor)
 ) -> IncidentSummary:
     try:
@@ -88,6 +90,7 @@ async def get_incident_summary(
 @router.get("/{sys_id}/details")
 async def get_incident_details(
     sys_id: str,
+    provider: Optional[str] = Query(None),
     processor=Depends(get_incident_processor)
 ) -> Dict[str, Any]:
     try:
@@ -99,35 +102,31 @@ async def get_incident_details(
         raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
-    
+
+
 @router.post("/{sys_id}/analyze")
 async def analyze_incident(
     sys_id: str,
     analysis_type: str = "general",
+    provider: Optional[str] = Query(None),
     processor=Depends(get_incident_processor)
 ):
     try:
         analysis = await processor.analyze_incident_only(sys_id, analysis_type)
-        
-        # ⚡ Debug print of raw AI analysis
-        print(f"[DEBUG] Raw analysis result: {analysis}")
-
-        # ✅ Convert all non-JSON serializable objects (datetime, Pydantic models, etc.)
         safe_response = jsonable_encoder(analysis)
-
         return JSONResponse(content=safe_response)
-
     except ServiceNowNotFoundError:
         raise HTTPException(status_code=404, detail=f"Incident {sys_id} not found")
     except Exception as e:
-        print(f"[DEBUG] Exception during /analyze: {e}")
+        logger.error("Exception during /analyze", sys_id=sys_id, error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
-    
+
+
 @router.post("/{sys_id}/compliance-filter")
 async def filter_incident_data(
     sys_id: str,
     compliance_level: str = "internal",
+    provider: Optional[str] = Query(None),
     processor=Depends(get_incident_processor)
 ):
     try:
@@ -148,6 +147,7 @@ async def filter_incident_data(
 async def get_incident_insights(
     sys_id: str,
     analysis_type: str = "general",
+    provider: Optional[str] = Query(None),
     processor=Depends(get_incident_processor)
 ):
     try:
@@ -162,6 +162,7 @@ async def get_incident_insights(
 @router.get("/{sys_id}/history")
 async def get_incident_history(
     sys_id: str,
+    provider: Optional[str] = Query(None),
     processor=Depends(get_incident_processor)
 ):
     try:

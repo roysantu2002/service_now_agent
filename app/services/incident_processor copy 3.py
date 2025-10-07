@@ -1,3 +1,8 @@
+"""
+Incident processing orchestration service with robust AI analysis,
+structured prompts, fallback defaults, and PDF generation.
+"""
+
 import os
 import json
 import uuid
@@ -8,17 +13,21 @@ from typing import Any, Dict, List, Optional
 
 import structlog
 from fastapi.encoders import jsonable_encoder
+from pydantic import ValidationError
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, ListFlowable, ListItem
 from reportlab.lib.styles import getSampleStyleSheet
 
-from app.models.incident import IncidentAnalysisModel
+from app.models.incident import IncidentProcessRequest, IncidentSummary, IncidentAnalysisModel
 from app.abstracts.compliance import ComplianceLevel
 from app.exceptions.servicenow import ServiceNowNotFoundError
 from app.services.generic_ai_connector import AIConnectorFactory
 
 logger = structlog.get_logger(__name__)
 
+# ----------------------------
+# Category mapping
+# ----------------------------
 ISSUE_CATEGORIES = {
     "network": "Network Issue",
     "hardware": "Hardware Failure",
@@ -31,6 +40,9 @@ ISSUE_CATEGORIES = {
 }
 
 
+# ----------------------------
+# Incident Processing Service
+# ----------------------------
 class IncidentProcessor:
     """Orchestration service for ServiceNow incident processing."""
 
@@ -45,6 +57,9 @@ class IncidentProcessor:
         self.compliance_filter = ComplianceFilter()
         self._initialized = False
 
+    # ----------------------------
+    # Ensure connectors initialized
+    # ----------------------------
     async def _ensure_initialized(self) -> None:
         if not self._initialized:
             await self.servicenow.initialize()
@@ -54,130 +69,60 @@ class IncidentProcessor:
             self._initialized = True
             logger.info("Incident processor initialized")
 
+    # ----------------------------
+    # Build AI prompt for structured JSON
+    # ----------------------------
     def _build_ai_prompt(self, incident_data: Dict[str, Any], analysis_type: str) -> str:
         incident_json = json.dumps(incident_data, indent=2, default=str)
         categories_json = json.dumps(ISSUE_CATEGORIES, indent=2)
         prompt = f"""
-You are an expert IT service analyst. Analyze the following ServiceNow incident data
-and return a structured JSON object exactly matching this model:
+            You are an expert IT service analyst. Analyze the following ServiceNow incident data
+            and return a structured JSON object exactly matching this model:
 
-{{
-"id": "auto-generated UUID",
-"issue": "Short title describing the problem",
-"issue_category": "One of the predefined categories: {list(ISSUE_CATEGORIES.values())}",
-"description": "Detailed explanation of the incident",
-"steps_to_resolve": [
-    "Step 1 - actionable instruction",
-    "... up to at least 10 steps"
-],
-"technical_details": "Technical breakdown including affected systems, logs, errors, configurations",
-"complete_description": "Comprehensive summary combining issue, technical details, and recommended actions"
-}}
+            {{
+            "id": "auto-generated UUID",
+            "issue": "Short title describing the problem",
+            "issue_category": "One of the predefined categories based on the problem: {list(ISSUE_CATEGORIES.values())}",
+            "description": "Detailed explanation of the incident and its context",
+            "steps_to_resolve": [
+                "Step 1 - actionable instruction",
+                "... up to at least 10 steps"
+            ],
+            "technical_details": "Technical breakdown including affected systems, logs, errors, configurations",
+            "complete_description": "Comprehensive summary combining issue, technical details, and recommended actions"
+            }}
 
-Incident Data:
-{incident_json}
+            Incident Data:
+            {incident_json}
 
-Available Categories:
-{categories_json}
+            Available Categories:
+            {categories_json}
 
-Rules:
-1. Respond ONLY in valid JSON (no markdown, no explanations).
-2. Ensure at least 10 steps in steps_to_resolve.
-3. Fill all fields meaningfully; do not leave any field empty.
-4. Use available incident fields (number, short_description, cmdb_ci, assignment_group, opened_at, updated_at) where applicable.
-        """
+            Rules:
+            1. Respond ONLY in valid JSON (no markdown, no explanations).
+            2. Ensure at least 10 steps in steps_to_resolve.
+            3. Fill all fields meaningfully; do not leave any field empty.
+            4. Use available incident fields (number, short_description, cmdb_ci, assignment_group, opened_at, updated_at) where applicable.
+            """
         return prompt
 
     # ----------------------------
-    # Extract raw AI text (OpenAI / Gemini)
+    # Extract JSON safely from AI output
     # ----------------------------
-    def _get_ai_raw_text(self, ai_analysis) -> str:
-        raw_text = ""
-
-        # Gemini: candidates[0].content.parts
-        if hasattr(ai_analysis, "candidates") and ai_analysis.candidates:
-            candidate = ai_analysis.candidates[0]
-            parts = getattr(getattr(candidate, "content", {}), "parts", [])
-            raw_text = "".join([getattr(p, "text", "") for p in parts if getattr(p, "text", None)]).strip()
-
-        # Fallback: OpenAI style
-        if not raw_text:
-            raw_text = getattr(ai_analysis, "content", "") or ""
-
-        return raw_text.strip()
-
-    # ----------------------------
-    # Robust JSON extraction
-    # ----------------------------
-    def _extract_json_from_ai(self, raw_text: str) -> Dict[str, Any]:
-        """
-        Extract JSON safely from AI output.
-        Handles:
-        - Markdown fences
-        - Truncated JSON from token limits
-        Returns a Python dict (partial if truncated)
-        """
-        if not raw_text or not raw_text.strip():
+    def _extract_json_from_ai(self, raw: str) -> str:
+        if not raw:
             raise ValueError("AI returned no content")
+        content = raw.strip().replace("```json", "").replace("```", "").strip()
+        start, end = content.find("{"), content.rfind("}")
+        if start == -1 or end == -1 or end < start:
+            logger.error("No valid JSON found in AI output", raw_output=content[:1000])
+            raise ValueError("AI output did not contain a valid JSON object")
+        return content[start:end + 1]
 
-        content = raw_text.replace("```json", "").replace("```", "").strip()
-        start = content.find("{")
-        end = content.rfind("}")
-
-        # If the output is truncated, rfind("}") may not exist
-        if start == -1:
-            raise ValueError("No JSON object found in AI output")
-
-        if end == -1 or end < start:
-            # Attempt to recover: take everything after first {
-            json_substr = content[start:]
-            # Try to parse incrementally
-            parsed = {}
-            try:
-                parsed = json.loads(json_substr)
-            except json.JSONDecodeError as e:
-                # Fallback: use regex or partial parsing
-                import re
-                # Match key-value pairs roughly
-                kv_pairs = re.findall(r'"(\w+)":\s*"([^"]*)"', json_substr)
-                parsed = {k: v for k, v in kv_pairs}
-            return parsed
-
-        json_substr = content[start:end + 1]
-
-        # Try parsing properly
-        try:
-            parsed = json.loads(json_substr)
-        except json.JSONDecodeError:
-            # Fallback: parse steps_to_resolve as a string and split manually
-            parsed = {}
-            import re
-            # Extract "steps_to_resolve" array if present
-            steps_match = re.search(r'"steps_to_resolve"\s*:\s*\[(.*?)\]', json_substr, re.DOTALL)
-            steps = []
-            if steps_match:
-                steps_raw = steps_match.group(1)
-                # Split by comma but remove quotes
-                steps = [s.strip().strip('"') for s in steps_raw.split(",") if s.strip()]
-            parsed["steps_to_resolve"] = steps
-            # You can also extract id, issue, etc. with regex as fallback
-            for field in ["id", "issue", "issue_category", "description", "technical_details", "complete_description"]:
-                m = re.search(rf'"{field}"\s*:\s*"([^"]*)"', json_substr)
-                parsed[field] = m.group(1) if m else None
-
-        # Clean numbered prefixes
-        if "steps_to_resolve" in parsed:
-            parsed["steps_to_resolve"] = [s.lstrip("0123456789. -") for s in parsed["steps_to_resolve"]]
-
-        return parsed
-
-
+    # ----------------------------
+    # Ensure at least 10 resolution steps
+    # ----------------------------
     def _ensure_ten_steps(self, steps: Optional[List[str]]) -> List[str]:
-        """
-        Ensures the steps_to_resolve list contains exactly 10 actionable steps.
-        Adds default steps if AI output is incomplete.
-        Each step is prefixed with its step number: "Step 1: ..."
-        """
         default_steps = [
             "Verify the incident details in ServiceNow and confirm affected services.",
             "Check relevant server/network logs for errors or timeouts.",
@@ -190,23 +135,18 @@ Rules:
             "Update stakeholders and create an action plan.",
             "Perform root cause analysis and schedule preventive measures."
         ]
-
         if not steps or not isinstance(steps, list):
             steps = []
-
-        # Add AI steps first (without numbers), then fill with defaults
-        cleaned_steps = [s.lstrip("0123456789. -") for s in steps]
         for step in default_steps:
-            if len(cleaned_steps) >= 10:
+            if len(steps) >= 10:
                 break
-            if step not in cleaned_steps:
-                cleaned_steps.append(step)
+            if step not in steps:
+                steps.append(step)
+        return steps[:10]
 
-        # Ensure all steps are numbered
-        numbered_steps = [f"Step {i+1}: {s}" for i, s in enumerate(cleaned_steps[:10])]
-        return numbered_steps
-
-
+    # ----------------------------
+    # Generate PDF
+    # ----------------------------
     async def _generate_incident_pdf(self, analysis: IncidentAnalysisModel) -> str:
         try:
             output_dir = os.path.join(os.getcwd(), "output")
@@ -236,7 +176,7 @@ Rules:
             raise
 
     # ----------------------------
-    # Main incident analysis
+    # Analyze a single incident
     # ----------------------------
     async def analyze_incident_only(self, sys_id: str, analysis_type: str = "general") -> Dict[str, Any]:
         await self._ensure_initialized()
@@ -247,7 +187,7 @@ Rules:
         validated_struct: Optional[IncidentAnalysisModel] = None
 
         try:
-            # Fetch incident & apply compliance filter
+            # Fetch incident & filter
             incident = await self.servicenow.get_incident(sys_id)
             incident_dict = incident.model_dump()
             compliance_result = await self.compliance_filter.filter_data(incident_dict, ComplianceLevel.INTERNAL)
@@ -258,35 +198,33 @@ Rules:
                 {
                     "prompt": prompt,
                     "context": {"analysis_type": analysis_type},
-                    "max_tokens": 2000,
+                    "max_tokens": 1200,
                     "temperature": 0.3
                 }
             )
 
-            # Extract raw AI text
-            raw_text = self._get_ai_raw_text(ai_analysis)
-            print("⚡ AI Raw Output:\n", raw_text[:2000])
+            raw_content = (ai_analysis.content or "").strip()
+            print("⚡ AI Raw Output:\n", raw_content[:2000])
 
-            # Save raw output
+            # Save AI raw output
             try:
                 tmpdir = tempfile.gettempdir()
                 raw_output_path = os.path.join(tmpdir, f"ai_raw_{sys_id}_{int(datetime.utcnow().timestamp())}.txt")
                 with open(raw_output_path, "w", encoding="utf-8") as f:
-                    f.write(raw_text)
+                    f.write(raw_content)
             except Exception as e:
                 logger.warning("Failed to write AI raw output", error=str(e))
 
-            # Parse JSON
+            # Parse JSON safely
+            parsed_json: Dict[str, Any] = {}
             try:
-                # parsed_json: Dict[str, Any] = json.loads(self._extract_json_from_ai(raw_text))
-                parsed_json: Dict[str, Any] = self._extract_json_from_ai(raw_text)
-
+                json_str = self._extract_json_from_ai(raw_content)
+                parsed_json = json.loads(json_str)
             except Exception as e:
                 parsing_error = f"{str(e)}\n{traceback.format_exc()}"
                 logger.error("AI JSON extraction/parsing failed", error=parsing_error, sys_id=sys_id)
-                parsed_json = {}
 
-            # Validate or fallback
+            # Validate or fallback to defaults
             validated_struct = IncidentAnalysisModel(
                 id=str(parsed_json.get("id") or uuid.uuid4().hex),
                 issue=str(parsed_json.get("issue") or getattr(incident, "short_description", f"Incident {sys_id}")),
@@ -320,6 +258,9 @@ Rules:
             logger.error("Unexpected error during analyze_incident_only", sys_id=sys_id, error=str(e), traceback=traceback.format_exc())
             raise
 
+    # ----------------------------
+    # Cleanup
+    # ----------------------------
     async def cleanup(self) -> None:
         if self._initialized:
             await self.servicenow.disconnect()
