@@ -1,6 +1,6 @@
 """Application configuration management."""
 from functools import lru_cache
-from typing import List, Optional
+from typing import List
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -11,39 +11,30 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=True,
-        extra="ignore"  # 👈 prevents ValidationError for undeclared vars
+        case_sensitive=True
     )
 
-    # === Application settings ===
+    # Application settings
     DEBUG: bool = Field(default=False, description="Debug mode")
     SECRET_KEY: str = Field(..., description="Secret key for JWT tokens")
     ALLOWED_HOSTS: List[str] = Field(default=["*"], description="Allowed CORS origins")
     
-    # === ServiceNow settings ===
+    # ServiceNow settings
     SERVICE_NOW_REST_API_URL: str = Field(..., description="ServiceNow REST API URL")
     SERVICE_NOW_USER: str = Field(..., description="ServiceNow username")
     SERVICE_NOW_PASSWORD: str = Field(..., description="ServiceNow password")
     SERVICENOW_TIMEOUT: int = Field(default=30, description="ServiceNow API timeout")
     
-    # === AI Provider settings ===
-    AI_PROVIDER: str = Field(default="openai", description="AI provider to use (openai or gemini)")
-    
-    # --- OpenAI settings ---
-    OPENAI_API_KEY: Optional[str] = Field(default=None, description="OpenAI API key")
-    OPENAI_MODEL: str = Field(default="gpt-4o-mini", description="OpenAI model to use")
+    # OpenAI settings
+    OPENAI_API_KEY: str = Field(..., description="OpenAI API key")
+    OPENAI_MODEL: str = Field(default="gpt-4", description="OpenAI model to use")
     OPENAI_MAX_TOKENS: int = Field(default=1000, description="Max tokens for OpenAI response")
     
-    # --- Gemini settings ---
-    GEMINI_API_KEY: Optional[str] = Field(default=None, description="Gemini API key")
-    GEMINI_MODEL: str = Field(default="gemini-2.5-flash", description="Gemini model to use")
-    GEMINI_MAX_TOKENS: int = Field(default=1000, description="Max tokens for Gemini response")
-
-    # === Security settings ===
+    # Security settings
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, description="JWT token expiration")
     ALGORITHM: str = Field(default="HS256", description="JWT algorithm")
     
-    # === Logging settings ===
+    # Logging settings
     LOG_LEVEL: str = Field(default="INFO", description="Logging level")
     LOG_FORMAT: str = Field(default="json", description="Log format (json or console)")
 

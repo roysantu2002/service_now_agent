@@ -4,6 +4,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any, Optional
 import structlog
 from datetime import datetime
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 
 from app.models.incident import (
     IncidentProcessRequest,
@@ -97,8 +99,8 @@ async def get_incident_details(
         raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
+    
+    
 @router.post("/{sys_id}/analyze")
 async def analyze_incident(
     sys_id: str,
@@ -107,13 +109,21 @@ async def analyze_incident(
 ):
     try:
         analysis = await processor.analyze_incident_only(sys_id, analysis_type)
-        return {"success": True, "sys_id": sys_id, "analysis_type": analysis_type, "analysis": analysis}
+        
+        # ⚡ Debug print of raw AI analysis
+        print(f"[DEBUG] Raw analysis result: {analysis}")
+
+        # ✅ Convert all non-JSON serializable objects (datetime, Pydantic models, etc.)
+        safe_response = jsonable_encoder(analysis)
+
+        return JSONResponse(content=safe_response)
+
     except ServiceNowNotFoundError:
         raise HTTPException(status_code=404, detail=f"Incident {sys_id} not found")
     except Exception as e:
+        print(f"[DEBUG] Exception during /analyze: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
+    
 @router.post("/{sys_id}/compliance-filter")
 async def filter_incident_data(
     sys_id: str,

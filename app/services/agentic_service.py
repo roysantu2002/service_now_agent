@@ -11,7 +11,7 @@ from app.abstracts.agentic_connector import (
     AgentResult,
     AgentAction
 )
-from app.services.openai_service import OpenAIConnector
+from app.services.openai_connector import OpenAIConnector
 from app.abstracts.ai_connector import AIRequest
 
 logger = structlog.get_logger(__name__)
