@@ -264,3 +264,15 @@ class ServiceNowConnector(BaseServiceNowConnector):
             'assigned_to', 'assignment_group', 'caller_id', 'opened_at',
             'sys_updated_on', 'resolved_at', 'comments', 'work_notes'
         }
+
+    async def create_incident(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.client:
+            await self.initialize()
+        try:
+            url = f"{self.base_url}/api/now/table/incident"
+            response = await self.client.post(url, json=data)
+            response.raise_for_status()
+            return response.json().get("result", {})  # return dict
+        except Exception as e:
+            logger.error("Error creating incident", error=str(e))
+            raise ServiceNowError(str(e))

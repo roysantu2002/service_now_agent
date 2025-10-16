@@ -160,7 +160,7 @@ class ComplianceFilter(BaseComplianceFilter):
             'certificate', 'hash', 'encrypted_password',
             
             # Network Information
-            'ip_address', 'mac_address', 'hostname', 'domain',
+            'ip_address', 'mac_address', 'hostname', 'domain', 'instance_name', 'server_name'
             'network_adapter', 'subnet', 'gateway',
             
             # Financial Information

@@ -17,6 +17,8 @@ from app.exceptions.servicenow import ServiceNowError, ServiceNowNotFoundError
 logger = structlog.get_logger(__name__)
 router = APIRouter()
 
+from fastapi import Body
+
 
 # -------------------------
 # Lazy dependency
@@ -28,6 +30,75 @@ def get_incident_processor(provider: Optional[str] = Query(None)):
     """
     from app.services.incident_processor import IncidentProcessor
     return IncidentProcessor(provider_name=provider)
+
+
+
+# -------------------------
+# Create Incident
+# -------------------------
+@router.post("/create", summary="Create a new ServiceNow incident")
+async def create_incident(
+    payload: Dict[str, Any] = Body(..., example={
+        "short_description": "first_test_api",
+        "description": "this is the first incident created via API",
+        "work_notes": "Initial creation"
+    }),
+    provider: Optional[str] = Query(None),
+    processor=Depends(get_incident_processor)
+):
+    """
+    Create a new incident in ServiceNow using short_description, description, and work_notes.
+    """
+    try:
+        result = await processor.servicenow.create_incident(payload)
+        return {
+            "success": True,
+            "message": "Incident created successfully",
+            "incident_sys_id": result.get("sys_id"),
+            "number": result.get("number"),
+            "data": result
+        }
+    except ServiceNowError as e:
+        logger.error("Error creating incident", error=str(e))
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        logger.error("Unexpected error creating incident", error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# -------------------------
+# Update Incident
+# -------------------------
+@router.put("/{sys_id}/update", summary="Update an existing ServiceNow incident")
+async def update_incident(
+    sys_id: str,
+    payload: Dict[str, Any] = Body(..., example={
+        "short_description": "Updated short desc",
+        "description": "Updated description",
+        "work_notes": "Updated via API"
+    }),
+    provider: Optional[str] = Query(None),
+    processor=Depends(get_incident_processor)
+):
+    """
+    Update an existing incident in ServiceNow identified by sys_id.
+    """
+    try:
+        result = await processor.servicenow.update_incident(sys_id, payload)
+        return {
+            "success": True,
+            "message": f"Incident {sys_id} updated successfully",
+            "updated_fields": payload,
+            "data": result
+        }
+    except ServiceNowNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Incident {sys_id} not found")
+    except ServiceNowError as e:
+        logger.error("Error updating incident", sys_id=sys_id, error=str(e))
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        logger.error("Unexpected error updating incident", sys_id=sys_id, error=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # -------------------------
