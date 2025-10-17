@@ -45,7 +45,7 @@ pytestdebug.log
 # Frontend (React / Next.js)
 # =========================
 # Dependency directories
-frontend/node_modules/
+frontend/node_modules
 # Build output
 frontend/.next/
 frontend/out/
