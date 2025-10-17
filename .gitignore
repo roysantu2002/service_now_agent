@@ -10,3 +10,24 @@ venv/
 
 # VS Code
 .vscode/
+
+# =========================
+# Frontend (React / Next.js)
+# =========================
+# Dependency directories
+frontend/node_modules/
+# Build output
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.turbo/
+frontend/.cache/
+frontend/dist/
+frontend/coverage/
+# Local environment files
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+# Misc
+frontend/.DS_Store
