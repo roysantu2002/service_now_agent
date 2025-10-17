@@ -1,15 +1,45 @@
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Virtual environment
-venv/
+# =========================
+# Global ignores
+# =========================
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
+*.swo
 .env
-
-# VS Code
+.env.*
 .vscode/
+.idea/
+__pycache__/
+*.py[cod]
+*.so
+*.out
+*.pid
+
+# =========================
+# Python backend (FastAPI)
+# =========================
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+# Compiled / bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+# Build / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+# Test / coverage
+.coverage
+.tox/
+.pytest_cache/
+.mypy_cache/
+pytestdebug.log
 
 # =========================
 # Frontend (React / Next.js)
@@ -31,3 +61,37 @@ frontend/.env.test.local
 frontend/.env.production.local
 # Misc
 frontend/.DS_Store
+
+# =========================
+# Docker / Kubernetes
+# =========================
+docker-compose.override.yml
+*.pid
+*.sock
+
+# =========================
+# Logs / Cache / Temp
+# =========================
+*.log
+*.cache/
+.cache/
+logs/
+tmp/
+__snapshots__/
+
+# =========================
+# Local database or config
+# =========================
+*.sqlite3
+*.db
+*.local
+
+# =========================
+# Git / Patch artifacts
+# =========================
+*.patch
+*.diff
+*.rej
+*.bak
+*.orig
+frontend/node_modules/
