@@ -206,30 +206,6 @@ Rules:
             raise
 
     # -------------------------------------------------------------------
-    async def _generate_incident_md(self, analysis: IncidentAnalysisModel) -> str:
-        """Generate Markdown file and return file path."""
-        try:
-            md_dir = os.path.join(os.getcwd(), "output_md")
-            os.makedirs(md_dir, exist_ok=True)
-            md_path = os.path.join(md_dir, f"{analysis.id}.md")
-
-            with open(md_path, "w", encoding="utf-8") as f:
-                f.write(f"# Issue: {analysis.issue}\n\n")
-                f.write(f"**Issue Category:** {analysis.issue_category}\n\n")
-                f.write(f"**Description:**\n{analysis.description}\n\n")
-                f.write("**Steps to Resolve:**\n")
-                for s in analysis.steps_to_resolve:
-                    f.write(f"- {s}\n")
-                f.write(f"\n**Technical Details:**\n{analysis.technical_details}\n\n")
-                f.write(f"**Complete Description:**\n{analysis.complete_description}\n")
-
-            logger.info("Markdown file generated successfully", path=md_path)
-            return md_path
-        except Exception as e:
-            logger.error("Failed to generate Markdown file", error=str(e))
-            raise
-
-    # -------------------------------------------------------------------
     async def _save_json_output(self, analysis: IncidentAnalysisModel) -> str:
         """Save incident analysis as JSON in json_output/."""
         try:
@@ -248,7 +224,7 @@ Rules:
 
     # -------------------------------------------------------------------
     async def analyze_incident_only(self, sys_id: str, analysis_type: str = "general") -> Dict[str, Any]:
-        """Analyze incident, save PDF, JSON, and Markdown outputs."""
+        """Analyze incident, save both PDF & JSON outputs."""
         await self._ensure_initialized()
         logger.info("Starting incident analysis", sys_id=sys_id, analysis_type=analysis_type)
 
@@ -299,10 +275,9 @@ Rules:
                 complete_description=str(parsed_json.get("complete_description") or getattr(incident, "description", "No description available"))
             )
 
-            # Save PDF, JSON, and Markdown outputs
+            # Save both PDF and JSON outputs
             pdf_path = await self._generate_incident_pdf(validated_struct)
             json_path = await self._save_json_output(validated_struct)
-            md_path = await self._generate_incident_md(validated_struct)
 
             return jsonable_encoder({
                 "success": parsing_error is None and validation_error is None,
@@ -313,7 +288,6 @@ Rules:
                 "data": validated_struct,
                 "pdf_path": pdf_path,
                 "json_path": json_path,
-                "md_path": md_path,
                 "raw_ai_output_path": raw_output_path,
                 "parsing_error": parsing_error,
                 "validation_error": validation_error

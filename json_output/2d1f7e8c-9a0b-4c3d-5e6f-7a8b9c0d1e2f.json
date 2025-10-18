@@ -1,0 +1,20 @@
+{
+  "id": "2d1f7e8c-9a0b-4c3d-5e6f-7a8b9c0d1e2f",
+  "issue": "Network port hung on server XYZ",
+  "issue_category": "Network Issue",
+  "description": "Incident INC0010002 reports that a network port on server XYZ is in a hung or unresponsive state. This indicates a potential loss of network connectivity or degraded performance for services hosted on this server. The issue requires immediate investigation to restore full network functionality for USER_9439.",
+  "steps_to_resolve": [
+    "Step 1: Verify incident details and confirm affected services.",
+    "Step 2: Check server/network logs for errors.",
+    "Step 3: Review recent changes or deployments.",
+    "Step 4: Attempt to reproduce in test environment.",
+    "Step 5: Check hardware and connectivity.",
+    "Step 6: Run diagnostics (ping, traceroute, netstat).",
+    "Step 7: Validate firewall and routing policies.",
+    "Step 8: Apply safe temporary mitigation.",
+    "Step 9: Update stakeholders and plan next steps.",
+    "Step 10: Perform root cause analysis and prevention plan."
+  ],
+  "technical_details": "Affected CI: unknown | Group: Network Operations",
+  "complete_description": ""
+}

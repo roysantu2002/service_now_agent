@@ -60,7 +60,7 @@ export function Hero() {
 
           {/* Heading */}
           <h1 className="text-4xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-5xl lg:text-6xl">
-            Enterprise AI Services Platform
+            Unified AI Services Platform
           </h1>
 
           {/* Subtext */}

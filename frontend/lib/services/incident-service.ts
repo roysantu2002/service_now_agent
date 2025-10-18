@@ -63,7 +63,7 @@ export const incidentService = {
     provider?: string
   ) {
     const params = { provider, analysis_type: analysisType }
-    const response = await apiClient.post(`/incidents/${sysId}/analyze`, {}, { params })
+    const response = await apiClient.post(`/api/v1/incidents/${sysId}/analyze`, {}, { params })
     return response.data
   },
 
