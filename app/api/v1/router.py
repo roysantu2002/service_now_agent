@@ -23,6 +23,13 @@ try:
 except Exception as e:
     logger.error("Error importing incidents endpoint", error=str(e))
 
+try:
+    from app.api.v1.endpoints import ragchat
+    routers.append(("ragchat", ragchat.router))
+    logger.debug("RAG Chat endpoint imported successfully")
+except Exception as e:
+    logger.error("Error importing RAG Chat endpoint", error=str(e))
+
 # --- Include routers ---
 for prefix, router in routers:
     api_router.include_router(router, prefix=f"/{prefix}", tags=[prefix])
