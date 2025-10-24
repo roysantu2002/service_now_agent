@@ -1,14 +1,13 @@
 """
-Tools for the Pydantic AI RAG agent.
+Tools for the Pydantic AI RAG agent with domain-aware search.
 """
-
 
 import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 import asyncio
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from dotenv import load_dotenv
 
 from app.utils.db_utils import (
@@ -21,7 +20,6 @@ from app.utils.db_utils import (
 from app.models.rag import ChunkResult, DocumentMetadata
 from app.services.providers import get_embedding_client, get_embedding_model
 
-# Load environment variables
 load_dotenv()
 logger = logging.getLogger(__name__)
 
@@ -46,17 +44,19 @@ async def generate_embedding(text: str) -> List[float]:
 
 
 # -----------------------
-# Tool Input Models
+# Input Models
 # -----------------------
 class VectorSearchInput(BaseModel):
     query: str
     limit: int = 10
+    domain: Optional[str] = None
 
 
 class HybridSearchInput(BaseModel):
     query: str
     limit: int = 10
     text_weight: float = 0.3
+    domain: Optional[str] = None
 
 
 class DocumentInput(BaseModel):
@@ -69,12 +69,16 @@ class DocumentListInput(BaseModel):
 
 
 # -----------------------
-# Tool Implementations
+# Domain-aware Search Tools
 # -----------------------
 async def vector_search_tool(input_data: VectorSearchInput) -> List[ChunkResult]:
     try:
         embedding = await generate_embedding(input_data.query)
-        results = await vector_search(embedding=embedding, limit=input_data.limit)
+        results = await vector_search(
+            embedding=embedding,
+            limit=input_data.limit,
+            domain=input_data.domain
+        )
         return [
             ChunkResult(
                 chunk_id=str(r["chunk_id"]),
@@ -99,7 +103,8 @@ async def hybrid_search_tool(input_data: HybridSearchInput) -> List[ChunkResult]
             embedding=embedding,
             query_text=input_data.query,
             limit=input_data.limit,
-            text_weight=input_data.text_weight
+            text_weight=input_data.text_weight,
+            domain=input_data.domain
         )
         return [
             ChunkResult(
@@ -151,51 +156,14 @@ async def list_documents_tool(input_data: DocumentListInput) -> List[DocumentMet
 
 
 # -----------------------
-# Safe Graph Search Fallback
+# Domain Detection Helper
 # -----------------------
-async def graph_search_tool(query: str) -> List[Dict[str, Any]]:
-    """
-    Placeholder for graph search. Returns empty list if not implemented.
-    """
-    logger.warning("Graph search tool not implemented, returning empty results.")
-    return []
-
-
-# -----------------------
-# Combined Search Utility
-# -----------------------
-async def perform_comprehensive_search(
-    query: str,
-    use_vector: bool = True,
-    use_graph: bool = True,
-    limit: int = 10
-) -> Dict[str, Any]:
-    """
-    Perform vector + graph searches safely.
-    """
-    results = {
-        "query": query,
-        "vector_results": [],
-        "graph_results": [],
-        "total_results": 0
-    }
-
-    tasks = []
-
-    if use_vector:
-        tasks.append(vector_search_tool(VectorSearchInput(query=query, limit=limit)))
-    if use_graph:
-        tasks.append(graph_search_tool(query=query))
-
-    if tasks:
-        search_results = await asyncio.gather(*tasks, return_exceptions=True)
-        if use_vector:
-            if not isinstance(search_results[0], Exception):
-                results["vector_results"] = search_results[0]
-        if use_graph:
-            idx = 1 if use_vector else 0
-            if not isinstance(search_results[idx], Exception):
-                results["graph_results"] = search_results[idx]
-
-    results["total_results"] = len(results["vector_results"]) + len(results["graph_results"])
-    return results
+def detect_domain_from_query(query: str) -> str:
+    q = query.lower()
+    if any(k in q for k in ["integration", "service error", "middleware", "auth"]):
+        return "middleware"
+    elif any(k in q for k in ["latency", "dns", "packet loss", "network", "firewall", "osi"]):
+        return "network"
+    elif any(k in q for k in ["query timeout", "replication", "database", "db", "sql"]):
+        return "database"
+    return "general"

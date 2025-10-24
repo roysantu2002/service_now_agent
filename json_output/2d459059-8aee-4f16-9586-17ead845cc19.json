@@ -1,0 +1,50 @@
+{
+  "id": "2d459059-8aee-4f16-9586-17ead845cc19",
+  "summary": "No summary available",
+  "issue": "Unknown issue",
+  "description": "No description",
+  "steps_to_resolve": [
+    "Step 1: Verify log and context details.",
+    "Step 2: Check system/network logs for errors.",
+    "Step 3: Identify recurring patterns or anomalies.",
+    "Step 4: Attempt to reproduce the issue if possible.",
+    "Step 5: Check configurations and recent changes.",
+    "Step 6: Run diagnostics or monitoring tools.",
+    "Step 7: Validate connectivity and performance.",
+    "Step 8: Apply temporary mitigation.",
+    "Step 9: Notify stakeholders and escalate as needed.",
+    "Step 10: Document root cause and corrective actions."
+  ],
+  "technical_details": "N/A",
+  "complete_description": "N/A",
+  "statistics": {
+    "total_entries": 0,
+    "error_count": 0,
+    "level_distribution": {},
+    "hourly_distribution": {},
+    "severity_analysis": {
+      "average_severity": 0,
+      "high_severity_count": 0
+    },
+    "entries": []
+  },
+  "compliance": {
+    "original_data": {
+      "logs_sample": ""
+    },
+    "filtered_data": {
+      "logs_sample": ""
+    },
+    "removed_fields": [],
+    "masked_fields": [],
+    "classifications": [
+      {
+        "field_name": "logs_sample",
+        "classification": "internal",
+        "reason": "Default classification",
+        "action": "allow"
+      }
+    ],
+    "compliance_score": 1.0
+  }
+}

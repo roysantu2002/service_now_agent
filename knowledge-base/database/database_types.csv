@@ -1,0 +1,4 @@
+id,title,content
+1,Relational Databases,"RDBMS systems like PostgreSQL and MySQL use structured tables and SQL queries."
+2,NoSQL Databases,"NoSQL databases like MongoDB and Cassandra store unstructured data."
+3,NewSQL,"NewSQL databases combine scalability of NoSQL with ACID compliance of SQL databases."

@@ -1,0 +1,4 @@
+id,title,content
+1,What is Middleware,"Middleware is software that sits between an operating system and applications, enabling communication and data management."
+2,Message Brokers,"Examples of middleware include message brokers such as RabbitMQ, Kafka, and ActiveMQ that handle asynchronous communication."
+3,Enterprise Integration,"Middleware enables enterprise systems integration by abstracting complex communication patterns."

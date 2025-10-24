@@ -1,0 +1,4 @@
+id,title,content
+1,Event-Driven Middleware,"Modern middleware platforms support event-driven architectures using publish-subscribe models."
+2,Service Meshes,"Middleware has evolved into service meshes like Istio and Linkerd that manage microservice communication."
+3,Scalability,"Middleware scalability is achieved through horizontal scaling and efficient message queuing."

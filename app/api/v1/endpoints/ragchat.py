@@ -10,13 +10,17 @@ import uuid
 from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from app.models.rag import ChatRequest, ChatResponse, ToolCall
+from app.agents.agent import rag_agent, AgentDependencies
+from app.tools.tools import hybrid_search_tool, HybridSearchInput
+
 from app.models.rag import (
     ChatRequest,
     ChatResponse,
     SearchRequest,
     SearchResponse,
     HealthStatus,
-    ToolCall
+    ToolCall  # <-- Correct import
 )
 
 logger = logging.getLogger(__name__)
@@ -26,13 +30,23 @@ router = APIRouter()
 # -------------------------
 # Lazy dependency
 # -------------------------
-def get_rag_agent(provider: Optional[str] = Query(None)):
-    """
-    Lazily import the RAG agent to avoid circular dependencies.
-    Optionally allow switching AI provider at runtime.
-    """
-    from app.agents.agent import rag_agent, AgentDependencies
+def get_rag_agent():
     return {"rag_agent": rag_agent, "AgentDependencies": AgentDependencies}
+
+
+DOMAIN_KEYWORDS = {
+    "middleware": ("integration", "service", "auth", "timeout"),
+    "network": ("latency", "packet loss", "connection", "DNS", "OSI"),
+    "database": ("query", "replication", "db", "database", "down"),
+}
+
+
+def detect_domain(query: str) -> str:
+    query_lower = query.lower()
+    for domain, keywords in DOMAIN_KEYWORDS.items():
+        if any(k.lower() in query_lower for k in keywords):
+            return domain
+    return "general"
 
 
 # -------------------------
@@ -58,14 +72,13 @@ async def health_check(agent=Depends(get_rag_agent)):
 # # -------------------------
 # # Chat endpoint
 # # -------------------------
+
 # @router.post("/chat", response_model=ChatResponse)
 # async def chat_endpoint(
 #     request: ChatRequest,
 #     agent=Depends(get_rag_agent)
 # ):
-#     """Non-streaming chat endpoint."""
-#     import uuid
-
+#     """Non-streaming chat endpoint with proper tools_used extraction."""
 #     try:
 #         rag_agent = agent["rag_agent"]
 #         AgentDependencies = agent["AgentDependencies"]
@@ -76,16 +89,47 @@ async def health_check(agent=Depends(get_rag_agent)):
 #         # Run the agent
 #         result = await rag_agent.run(request.message, deps=deps)
 
-#         # --- Extract only the text output ---
+#         # Extract assistant text
 #         if hasattr(result, "output"):
-#             response_text = str(result.output)
-#         elif hasattr(result, "data") and hasattr(result.data, "output"):
-#             response_text = str(result.data.output)
+#             response_text = result.output
+#         elif hasattr(result, "data"):
+#             response_text = result.data
 #         else:
 #             response_text = str(result)
 
-#         # Tools used (empty list for now)
+#         # --- Extract tools used properly ---
 #         tools_used: List[ToolCall] = []
+#         try:
+#             messages = result.all_messages()
+#             for msg in messages:
+#                 if hasattr(msg, "parts"):
+#                     for part in msg.parts:
+#                         if part.__class__.__name__ == "ToolCallPart":
+#                             tool_name = getattr(part, "tool_name", "unknown")
+#                             tool_call_id = getattr(part, "tool_call_id", None)
+#                             tool_args = {}
+#                             if hasattr(part, "args") and part.args is not None:
+#                                 import json
+#                                 if isinstance(part.args, str):
+#                                     try:
+#                                         tool_args = json.loads(part.args)
+#                                     except json.JSONDecodeError:
+#                                         tool_args = {}
+#                                 elif isinstance(part.args, dict):
+#                                     tool_args = part.args
+#                             # Fallback to args_as_dict
+#                             if hasattr(part, "args_as_dict"):
+#                                 try:
+#                                     tool_args = part.args_as_dict()
+#                                 except Exception:
+#                                     pass
+#                             tools_used.append(ToolCall(
+#                                 tool_name=tool_name,
+#                                 args=tool_args,
+#                                 tool_call_id=tool_call_id
+#                             ))
+#         except Exception as e:
+#             logger.warning(f"Failed to extract tools_used: {e}")
 
 #         return ChatResponse(
 #             message=response_text,
@@ -96,55 +140,7 @@ async def health_check(agent=Depends(get_rag_agent)):
 
 #     except Exception as e:
 #         logger.error(f"Chat endpoint failed: {e}", exc_info=True)
-#         raise HTTPException(status_code=500, detail=f"Chat endpoint error: {str(e)}")
-
-# @router.post("/chat", response_model=ChatResponse)
-# async def chat_endpoint(
-#     request: ChatRequest,
-#     agent=Depends(get_rag_agent)
-# ):
-#     """Non-streaming chat endpoint with correct message formatting and tools_used."""
-#     try:
-#         rag_agent = agent["rag_agent"]
-#         AgentDependencies = agent["AgentDependencies"]
-
-#         session_id = request.session_id or str(uuid.uuid4())
-#         deps = AgentDependencies(session_id=session_id, user_id=request.user_id)
-
-#         # Run the agent
-#         result = await rag_agent.run(request.message, deps=deps)
-
-#         # Extract just the output string (instead of str(result))
-#         if hasattr(result, "output"):
-#             response_text = result.output
-#         elif hasattr(result, "data"):
-#             response_text = result.data
-#         else:
-#             response_text = str(result)
-
-#         # Extract tools used if available
-#         tools_used: List[ToolCall] = getattr(result, "tools_used", [])
-#         if tools_used:
-#             tools_used = [
-#                 ToolCall(
-#                     name=t.name,
-#                     input=t.input,
-#                     output=t.output
-#                 ) if not isinstance(t, ToolCall) else t
-#                 for t in tools_used
-#             ]
-
-#         return ChatResponse(
-#             message=response_text,
-#             session_id=session_id,
-#             tools_used=tools_used,
-#             metadata={"search_type": str(request.search_type)}
-#         )
-
-#     except Exception as e:
-#         logger.error(f"Chat endpoint failed: {e}")
 #         raise HTTPException(status_code=500, detail=str(e))
-
 @router.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(
     request: ChatRequest,
@@ -207,14 +203,14 @@ async def chat_endpoint(
             message=response_text,
             session_id=session_id,
             tools_used=tools_used,
+            sources=[],  # Fill with relevant sources if needed
             metadata={"search_type": str(request.search_type)}
         )
 
     except Exception as e:
         logger.error(f"Chat endpoint failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
-
+    
 # -------------------------
 # Streaming Chat
 # -------------------------

@@ -1,0 +1,4 @@
+id,title,content
+1,Firewalls,"Firewalls control incoming and outgoing network traffic based on security rules."
+2,VPNs,"Virtual Private Networks create secure tunnels over public networks."
+3,IDS and IPS,"Intrusion Detection and Prevention Systems monitor and act on malicious network activities."

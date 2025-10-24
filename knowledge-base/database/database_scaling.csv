@@ -1,0 +1,4 @@
+id,title,content
+1,Horizontal Scaling,"Scaling out involves adding more database nodes to distribute the load."
+2,Vertical Scaling,"Scaling up increases resources like CPU and memory on a single database node."
+3,Sharding,"Sharding splits data across multiple machines for performance and availability."
