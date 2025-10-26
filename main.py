@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
     # Graceful shutdown
     try:
         await close_database()
-        await close_graph()
+        # await close_graph()
         logger.info("Closed database and graph connections")
     except Exception as e:
         logger.error("Error during shutdown", error=str(e))
@@ -112,8 +112,8 @@ def create_app() -> FastAPI:
         print("[DEBUG] Incident API router included successfully")
 
         # Add RAGChat endpoints (from agentic RAG system)
-        from app.api.v1.endpoints import ragchat
-        app.include_router(ragchat.router, prefix="/api/v1/ragchat", tags=["RAGChat"])
+        # from app.api.v1.endpoints import ragchat
+        # app.include_router(ragchat.router, prefix="/api/v1/ragchat", tags=["RAGChat"])
         print("[DEBUG] RAGChat router included successfully")
 
     except Exception as e:

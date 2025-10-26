@@ -1,434 +1,211 @@
-import asyncio
+# app/services/log_services.py
+
 import os
 import uuid
 import json
-import tempfile
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
-import pandas as pd
+
 import structlog
+from rich.console import Console
+from rich.panel import Panel
+import pandas as pd
 
-from fastapi.encoders import jsonable_encoder
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, ListFlowable, ListItem
-from reportlab.lib.styles import getSampleStyleSheet
-
-from app.models.log_analyzer_models import LogEntry, DateRangeFilter
-from app.services.log_parser import LogParser
-from app.services.compliance import ComplianceFilter
-from app.services.generic_ai_connector import AIConnectorFactory
+from app.models.log_analyzer_models import MultiLogAnalysis
+from .log_parser import MultiFileLogParser
+from .generic_ai_connector import AIConnectorFactory
+from .report_generator import LogReportGenerator
 
 logger = structlog.get_logger(__name__)
+console = Console()
 
 
 class LogAnalyzerService:
-    """
-    Central Log Analyzer Service
-    - Parses logs asynchronously
-    - Runs compliance scanning
-    - Sends log context + user question to AI
-    - Generates PDF, Markdown, and JSON reports (named after analysis_id)
-    """
+    """Service to parse logs, create DataFrame, and send first 100 rows to AI."""
 
-    def __init__(self, provider_name: Optional[str] = None):
-        self.parser = LogParser()
-        self.compliance_filter = ComplianceFilter()
+    def __init__(self, provider_name: str = "openai", base_uploads: str = "data/uploads"):
+        self.parser = MultiFileLogParser()
         self.ai_service = AIConnectorFactory.get_connector(provider_name)
-        self.analysis_cache: Dict[str, Dict[str, Any]] = {}
+        self.analysis_cache: Dict[str, Any] = {}
         self._initialized = False
 
-    # -------------------------------------------------------------------------
-    # Initialization
-    # -------------------------------------------------------------------------
-    async def _ensure_initialized(self) -> None:
+        self.base_uploads = Path(base_uploads)
+        self.base_dir = Path("outputs")
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+
+        # Batch folder for current analysis
+        batch_name = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
+        self.batch_folder = self.base_dir / batch_name
+        self.batch_folder.mkdir(parents=True, exist_ok=True)
+
+        self.reporter = LogReportGenerator(output_dir=str(self.batch_folder))
+        console.log(f"[Init] Batch folder created: {self.batch_folder}")
+
+    async def _ensure_initialized(self):
         if not self._initialized:
-            await self.parser.initialize()
-            await self.parser.health_check()
-            await self.compliance_filter.initialize()
-            await self.ai_service.initialize()
+            console.log("[Init] Initializing parser and AI service...")
+            if hasattr(self.parser, "health_check"):
+                await self.parser.health_check()
+            if hasattr(self.ai_service, "initialize"):
+                await self.ai_service.initialize()
             self._initialized = True
-            logger.info("LogAnalyzerService initialized successfully")
+            console.log("[Init] LogAnalyzerService initialized successfully")
 
-    # -------------------------------------------------------------------------
-    # Main Log Analysis
-    # -------------------------------------------------------------------------
-    async def analyze_log_file(
-        self,
-        analysis_id: str,
-        file_path: str,
-        date_filter: Optional[DateRangeFilter] = None,
-        progress_tracker: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+    # -------------------------------------------------------------------
+    async def _extract_ai_text(self, ai_response) -> str:
+        """Extract raw text from AI response (OpenAI or Gemini style)."""
+        raw_text = ""
 
+        # Gemini format
+        if hasattr(ai_response, "candidates") and ai_response.candidates:
+            candidate = ai_response.candidates[0]
+            parts = getattr(getattr(candidate, "content", {}), "parts", [])
+            raw_text = "".join([getattr(p, "text", "") for p in parts if getattr(p, "text", None)]).strip()
+
+        # Fallback: OpenAI-like format
+        if not raw_text:
+            raw_text = getattr(ai_response, "content", "") or ""
+
+        return raw_text.strip()
+
+    # -------------------------------------------------------------------
+    async def analyze_latest_folder(self) -> MultiLogAnalysis:
+        """Automatically detect the latest upload folder and analyze all files."""
         await self._ensure_initialized()
-        progress_tracker = progress_tracker or {}
-        progress_tracker[analysis_id] = {"status": "running", "progress": 0, "message": ""}
 
-        try:
-            # 1️⃣ Read file
-            progress_tracker[analysis_id].update(message="Reading log file...", progress=5)
-            with open(file_path, "r", encoding="utf-8") as f:
-                log_data = f.read()
+        # Detect latest timestamped folder
+        folders = [f for f in self.base_uploads.iterdir() if f.is_dir()]
+        if not folders:
+            raise FileNotFoundError(f"No upload folders found in {self.base_uploads}")
+        latest_folder = max(folders, key=lambda f: f.stat().st_mtime)
+        console.log(f"[Step 0] Latest folder detected: {latest_folder}")
 
-            # 2️⃣ Parse logs
-            progress_tracker[analysis_id].update(message="Parsing logs...", progress=25)
-            parse_result = await self.parser.parse_logs(log_data)
-            entries: List[LogEntry] = parse_result.entries
-
-            # 3️⃣ Apply date filter or infer automatically
-            if date_filter:
-                entries = self._filter_by_date(entries, date_filter)
-            elif entries:
-                start_date, end_date = entries[0].timestamp, entries[-1].timestamp
-                date_filter = DateRangeFilter(start_date=start_date, end_date=end_date)
-                entries = self._filter_by_date(entries, date_filter)
-
-            # 4️⃣ Stats
-            stats = self._recalculate_stats(entries)
-
-            # 5️⃣ Compliance scan
-            progress_tracker[analysis_id].update(message="Running compliance checks...", progress=50)
-            sample_text = "\n".join([e.message for e in entries[:100]])
-            compliance_result = await self.compliance_filter.filter_data({"logs_sample": sample_text})
-
-            # 6️⃣ Prepare AI prompt
-            context_text = "\n".join([f"{e.timestamp} [{e.level}] {e.message}" for e in entries[:100]])
-            prompt = f"Analyze the following log entries and summarize the main problem:\n\n{context_text}"
-
-            logger.info("AI PROMPT PREVIEW", analysis_id=analysis_id, prompt=prompt)
-
-            ai_analysis = await self.ai_service.generate_text({
-                "prompt": prompt,
-                "context": {"analysis_id": analysis_id},
-                "max_tokens": 2000,
-                "temperature": 0.3
-            })
-
-            raw_text = getattr(ai_analysis, "content", "") or ""
-            logger.info("AI RAW RESPONSE RECEIVED", analysis_id=analysis_id, length=len(raw_text))
-            logger.debug("AI RESPONSE TEXT", response=raw_text[:2000])
-
-            # 7️⃣ Parse AI JSON
-            parsed_json = self._extract_json_from_ai(raw_text)
-
-            # 8️⃣ Assemble final analysis
-            analysis = {
-                "id": analysis_id,
-                "summary": parsed_json.get("summary", "No summary"),
-                "issue": parsed_json.get("issue", "Unknown issue"),
-                "description": parsed_json.get("description", "No description"),
-                "steps_to_resolve": self._ensure_ten_steps(parsed_json.get("steps_to_resolve")),
-                "technical_details": parsed_json.get("technical_details", "N/A"),
-                "complete_description": parsed_json.get("complete_description", "N/A"),
-                "statistics": stats,
-                "compliance": compliance_result,
-                "date_range": {
-                    "start_date": str(date_filter.start_date),
-                    "end_date": str(date_filter.end_date)
-                }
-            }
-
-            # 9️⃣ Generate outputs
-            pdf_path = await self._generate_pdf(analysis)
-            md_path = await self._generate_md(analysis)
-            json_path = await self._save_json_output(analysis)
-
-            # 🔟 Cache result
-            self.analysis_cache[analysis_id] = {"entries": entries, "analysis": analysis}
-            progress_tracker[analysis_id].update(
-                status="completed",
-                progress=100,
-                message="Analysis complete",
-                results=analysis
+        # List all files inside latest folder
+        file_paths = [str(f) for f in latest_folder.iterdir() if f.is_file()]
+        if not file_paths:
+            console.log("[Step 0] No files found in folder")
+            return MultiLogAnalysis(
+                analysis_id=str(uuid.uuid4()),
+                overall_summary="No files found in latest folder.",
+                aggregated_findings=[],
+                highest_severity_overall=None,
+                combined_events=[],
+                individual_analyses=[]
             )
 
-            return {
-                "success": True,
-                "analysis_id": analysis_id,
-                "pdf_path": pdf_path,
-                "md_path": md_path,
-                "json_path": json_path,
-                "analysis": analysis
-            }
+        console.log(f"[Step 0] Found {len(file_paths)} files: {file_paths}")
 
-        except Exception as e:
-            tb = traceback.format_exc()
-            logger.error("Log analysis failed", error=str(e), traceback=tb)
-            progress_tracker[analysis_id].update(status="error", progress=0, message=str(e))
-            return {"status": "error", "message": str(e), "traceback": tb}
+        # Delegate to analyze_multiple_files
+        return await self.analyze_multiple_files(file_paths)
 
-    # -------------------------------------------------------------------------
-    # Helper: Filter by date (auto infer if missing)
-    # -------------------------------------------------------------------------
-    def _filter_by_date(self, entries: List[LogEntry], date_filter: Optional[DateRangeFilter]) -> List[LogEntry]:
-        def parse_ts(ts):
-            if isinstance(ts, datetime):
-                return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
-            if isinstance(ts, str):
-                if ts.endswith("Z"):
-                    ts = ts.replace("Z", "+00:00")
-                dt = datetime.fromisoformat(ts)
-                return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-            return datetime.now(timezone.utc)
+    # -------------------------------------------------------------------
+    async def analyze_multiple_files(
+        self,
+        file_paths: List[str],
+        analysis_folder: Optional[str | Path] = None
+    ) -> MultiLogAnalysis:
+        """Analyze a given list of files, generate DataFrame, send first 100 rows to AI."""
+        await self._ensure_initialized()
 
-        start_raw = getattr(date_filter, "start_date", None)
-        end_raw = getattr(date_filter, "end_date", None)
+        if not file_paths:
+            raise ValueError("No file paths provided for analysis")
 
-        if not start_raw and entries:
-            start_raw = entries[0].timestamp
-        if not end_raw and entries:
-            end_raw = entries[-1].timestamp
+        console.log(f"[Step 0] Analyzing {len(file_paths)} files: {file_paths}")
 
-        start, end = parse_ts(start_raw), parse_ts(end_raw)
-        return [e for e in entries if e.timestamp and start <= parse_ts(e.timestamp) <= end]
+        # Parse all files
+        parse_results = await self.parser.parse_multiple_logs(file_paths)
+        df = self.parser.logs_to_dataframe(parse_results)
+        console.log(f"[Step 1] Parsed {len(df)} rows from {len(parse_results)} files")
 
-    # -------------------------------------------------------------------------
-    # Helper: Stats recalculation
-    # -------------------------------------------------------------------------
-    def _recalculate_stats(self, entries: List[LogEntry]) -> Dict[str, Any]:
-        from collections import Counter, defaultdict
-        level_dist = Counter(e.level for e in entries)
-        hourly_dist = defaultdict(int)
-        for e in entries:
-            if e.timestamp:
-                hourly_dist[e.timestamp.hour] += 1
-        severity_scores = [getattr(e, "severity_score", 0) for e in entries]
-        avg_severity = sum(severity_scores) / len(severity_scores) if severity_scores else 0
-        high_severity_count = len([s for s in severity_scores if s >= 4])
-        return {
-            "total_entries": len(entries),
-            "error_count": sum(1 for e in entries if e.level in ["ERROR", "CRITICAL"]),
-            "level_distribution": dict(level_dist),
-            "hourly_distribution": dict(hourly_dist),
-            "severity_analysis": {"average_severity": avg_severity, "high_severity_count": high_severity_count},
+        if df.empty:
+            console.log("[Step 2] No logs found, returning empty analysis")
+            return MultiLogAnalysis(
+                analysis_id=str(uuid.uuid4()),
+                overall_summary="No log entries found.",
+                aggregated_findings=[],
+                highest_severity_overall=None,
+                combined_events=[],
+                individual_analyses=[]
+            )
+
+        # Prepare first 100 rows for AI
+        combined_text = "\n".join(df["message"].tolist()[:100])
+        console.log("[Step 3] Combined text prepared for AI (first 100 rows)")
+
+        prompt = f"Analyze the following log entries (first 100 rows) and return structured JSON:\n{combined_text}"
+
+        ai_request = {
+            "prompt": prompt,
+            "context": {"analysis_type": "log_analysis"},
+            "max_tokens": 2000,
+            "temperature": 0.3
         }
 
-    # -------------------------------------------------------------------------
-    # Helper: Parse AI JSON safely
-    # -------------------------------------------------------------------------
-    def _extract_json_from_ai(self, raw_text: str) -> Dict[str, Any]:
-        import re, json
-        text = raw_text.replace("```json", "").replace("```", "").strip()
-        start, end = text.find("{"), text.rfind("}")
-        if start == -1 or end == -1 or end < start:
-            return {}
+        # Send to AI
         try:
-            return json.loads(text[start:end + 1])
-        except json.JSONDecodeError:
-            parsed = {}
-            for key in ["summary", "issue", "description", "technical_details", "complete_description"]:
-                m = re.search(rf'"{key}"\s*:\s*"([^"]+)"', text)
-                parsed[key] = m.group(1) if m else None
-            return parsed
-
-    # -------------------------------------------------------------------------
-    # Helper: Ensure steps completeness
-    # -------------------------------------------------------------------------
-    def _ensure_ten_steps(self, steps: Optional[List[str]]) -> List[str]:
-        default_steps = [
-            "Verify log and context details.",
-            "Check configurations and recent changes.",
-            "Reproduce the issue if possible.",
-            "Run diagnostics and validate logs.",
-            "Investigate network/system dependencies.",
-            "Apply temporary mitigation steps.",
-            "Monitor the impact post mitigation.",
-            "Escalate to relevant teams if unresolved.",
-            "Document RCA and lessons learned.",
-            "Implement preventive measures."
-        ]
-        if not steps or not isinstance(steps, list):
-            steps = []
-        cleaned = [s.strip("0123456789.- ") for s in steps]
-        for step in default_steps:
-            if len(cleaned) >= 10:
-                break
-            if step not in cleaned:
-                cleaned.append(step)
-        return [f"Step {i+1}: {s}" for i, s in enumerate(cleaned[:10])]
-
-    # -------------------------------------------------------------------------
-    # Output Generators (Named by analysis_id)
-    # -------------------------------------------------------------------------
-    async def _generate_pdf(self, analysis: Dict[str, Any]) -> str:
-        pdf_dir = os.path.join(os.getcwd(), "output_pdf")
-        os.makedirs(pdf_dir, exist_ok=True)
-        pdf_path = os.path.join(pdf_dir, f"{analysis['id']}.pdf")
-
-        try:
-            doc = SimpleDocTemplate(pdf_path, pagesize=A4)
-            styles = getSampleStyleSheet()
-            elements = [
-                Paragraph(f"<b>Issue:</b> {analysis.get('issue','')}", styles["Heading2"]),
-                Paragraph(analysis.get('description',''), styles["Normal"]),
-                Spacer(1, 12),
-                Paragraph("<b>Steps to Resolve:</b>", styles["Heading3"]),
-                ListFlowable([ListItem(Paragraph(s, styles["Normal"])) for s in analysis.get('steps_to_resolve', [])], bulletType="1"),
-                Spacer(1, 12),
-                Paragraph("<b>Technical Details:</b>", styles["Heading3"]),
-                Paragraph(analysis.get('technical_details',''), styles["Normal"]),
-                Spacer(1, 12),
-                Paragraph("<b>Complete Description:</b>", styles["Heading3"]),
-                Paragraph(analysis.get('complete_description',''), styles["Normal"])
-            ]
-            doc.build(elements)
-            return pdf_path
+            ai_response = await self.ai_service.generate_text(ai_request)
+            raw_text = await self._extract_ai_text(ai_response)
+            try:
+                structured_data = json.loads(raw_text)
+                result = MultiLogAnalysis(**structured_data)
+            except Exception:
+                result = MultiLogAnalysis(
+                    analysis_id=str(uuid.uuid4()),
+                    overall_summary=raw_text.strip() or "AI returned no structured data",
+                    aggregated_findings=[],
+                    highest_severity_overall=None,
+                    combined_events=[],
+                    individual_analyses=[]
+                )
         except Exception as e:
-            logger.error("PDF generation failed", error=str(e))
-            raise
-
-    async def _generate_md(self, analysis: Dict[str, Any]) -> str:
-        md_dir = os.path.join(os.getcwd(), "output_md")
-        os.makedirs(md_dir, exist_ok=True)
-        md_path = os.path.join(md_dir, f"{analysis['id']}.md")
-
-        with open(md_path, "w", encoding="utf-8") as f:
-            f.write(f"# Issue: {analysis.get('issue','')}\n\n")
-            f.write(f"**Description:**\n{analysis.get('description','')}\n\n")
-            f.write("**Steps to Resolve:**\n")
-            for s in analysis.get('steps_to_resolve', []):
-                f.write(f"- {s}\n")
-            f.write(f"\n**Technical Details:**\n{analysis.get('technical_details','')}\n\n")
-            f.write(f"**Complete Description:**\n{analysis.get('complete_description','')}\n")
-        return md_path
-
-    async def _save_json_output(self, analysis: Dict[str, Any]) -> str:
-        json_dir = os.path.join(os.getcwd(), "json_output")
-        os.makedirs(json_dir, exist_ok=True)
-        json_path = os.path.join(json_dir, f"{analysis['id']}.json")
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(jsonable_encoder(analysis), f, indent=2, ensure_ascii=False)
-        return json_path
-
-    # -------------------------------------------------------------------------
-    # Natural Query with prompt + context + response logging
-    # -------------------------------------------------------------------------
-    async def _prepare_ai_prompt(self, log_entries: List[LogEntry], question: str, context_size: int = 50):
-        df = pd.DataFrame([{
-            "timestamp": e.timestamp.isoformat() if e.timestamp else None,
-            "level": e.level,
-            "source": getattr(e, "source", ""),
-            "message": e.message
-        } for e in log_entries])
-
-        keywords = [w.lower() for w in question.split() if len(w) > 3]
-        mask = df["message"].str.lower().apply(lambda m: any(k in m for k in keywords))
-        filtered = df[mask].head(context_size)
-
-        logs_text = "\n".join(
-            [f"{r['timestamp']} [{r['level']}] {r['source']}: {r['message']}" for _, r in filtered.iterrows()]
-        )
-        prompt = f"User question: {question}\n\nRelevant logs:\n{logs_text}\n\nAnswer concisely:"
-
-        logger.info("AI PROMPT BUILT FOR QUERY", question=question, prompt=prompt)
-        return prompt, filtered
-
-    async def ai_natural_query(self, log_data: str, question: str, context_size: int = 50) -> Dict[str, Any]:
-        """
-        Perform AI-powered log analysis given raw log text and a natural language question.
-        It prints the parsed DataFrame, builds a contextual prompt, sends it to AI, and returns the structured result.
-        """
-        try:
-            # Step 1: Parse logs
-            parsed = await self.parser.parse_logs(log_data)
-            entries = parsed.entries
-
-            if not entries:
-                logger.warning("No log entries found for analysis")
-                return {"success": False, "error": "No log entries found"}
-
-            df = pd.DataFrame([e.__dict__ for e in entries])
-            start_dt = pd.to_datetime(df["timestamp"].min())
-            end_dt = pd.to_datetime(df["timestamp"].max())
-            logger.info("Determined log date range", extra={"start": str(start_dt), "end": str(end_dt)})
-
-            # 🔍 Step 2: Print the DataFrame for debugging
-            logger.info("Parsed Log DataFrame preview:")
-            logger.info("\n" + df.to_string(max_rows=10, index=False))
-
-            # Step 3: Select the last N context logs
-            filtered_df = df.tail(context_size)
-
-            # Print filtered DataFrame
-            logger.info("Filtered log context (last %d lines):", context_size)
-            logger.info("\n" + filtered_df.to_string(max_rows=20, index=False))
-
-            # Step 4: Build AI input context text
-            context_text = "\n".join(
-                f"{row['timestamp']} [{row['level']}] {row.get('component', 'unknown')}: {row.get('message', '')}"
-                for _, row in filtered_df.iterrows()
+            logger.error("AI analysis failed", error=str(e), traceback=traceback.format_exc())
+            result = MultiLogAnalysis(
+                analysis_id=str(uuid.uuid4()),
+                overall_summary="AI analysis failed.",
+                aggregated_findings=[],
+                highest_severity_overall=None,
+                combined_events=[],
+                individual_analyses=[]
             )
 
-            # Step 5: Build the AI prompt
-            prompt = f"""
-You are a senior site reliability engineer.
-Analyze the following application logs and answer the user's question.
+        # Save JSON + generate reports
+        folder = Path(analysis_folder) if analysis_folder else self.batch_folder / result.analysis_id
+        folder.mkdir(parents=True, exist_ok=True)
+        json_path = folder / f"analysis_{result.analysis_id}.json"
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(result.dict(), f, indent=2)
+        console.log(f"[Step 4] Analysis JSON saved: {json_path}")
 
-Question:
-{question}
+        self.reporter.output_dir = str(folder)
+        self.reporter.generate_reports(result.analysis_id, result.dict())
+        console.log(f"[Step 5] Reports generated in folder: {folder}")
 
-Relevant logs (between {start_dt} and {end_dt}):
-{context_text}
+        return result
 
-Instructions:
-- Identify patterns, errors, or warnings relevant to the question.
-- Suggest probable root cause and impacted components.
-- Respond only in JSON with keys:
-  "summary", "root_cause", "probable_service", "recommendations".
+
+# -----------------------------
+# STRESSED Printer
+# -----------------------------
+class StressedPrinter:
+    """Print STRESSED-style console report"""
+
+    def print_summary(self, analysis: MultiLogAnalysis):
+        panel_text = f"""
+😰 STRESSED (STRuctured Generation Security System Evaluating Data) 😰
+
+Summary: {analysis.overall_summary}
+
+Current Status:
+Anxiety         ▓▓▓▓▓▓▓▓▓░ 90%
+Coffee          ▓░░░░░░░░░ 10%
+Understanding   NOT APPLICABLE
+
+Coping Mechanisms:
+- Deep breaths between log entries
+- Nervous documentation
+- Excessive commenting
+- Strategic panic
 """
-            logger.info("AI PROMPT BUILT FOR QUERY", extra={"question": question, "lines": len(filtered_df)})
-            logger.debug(f"PROMPT SENT TO AI:\n{prompt}")
-
-            # Step 6: Call AI
-            ai_resp = await self.ai_service.generate_text({
-                "prompt": prompt,
-                "max_tokens": 1500,
-                "temperature": 0.2
-            })
-
-            # Step 7: Extract raw text safely
-            raw_text = getattr(ai_resp, "content", "") or getattr(ai_resp, "text", "") or str(ai_resp)
-            logger.info("AI RAW RESPONSE RECEIVED", extra={"length": len(raw_text)})
-            logger.debug(f"AI RAW RESPONSE:\n{raw_text}")
-
-            # Step 8: Parse AI JSON
-            parsed_output = self._extract_json_from_ai(raw_text)
-            if not parsed_output:
-                logger.warning("AI response not in expected JSON format, returning raw text")
-                parsed_output = {
-                    "summary": raw_text.strip(),
-                    "root_cause": None,
-                    "probable_service": None,
-                    "recommendations": None
-                }
-
-            return {
-                "success": True,
-                "question": question,
-                "prompt": prompt,
-                "context_logs": filtered_df.to_dict(orient="records"),
-                "ai_raw_text": raw_text,
-                "ai_response": parsed_output,
-                "parsing_summary": {
-                    "total": parsed.total_count,
-                    "errors": parsed.error_count,
-                    "warnings": parsed.warning_count
-                }
-            }
-
-        except Exception as e:
-            tb = traceback.format_exc()
-            logger.error("AI natural query failed", extra={"error": str(e), "traceback": tb})
-            return {"success": False, "error": str(e), "traceback": tb}
-
-    def _extract_json_from_ai(self, text: str) -> Dict[str, Any]:
-            """Extract JSON block from AI response text."""
-            import json, re
-            try:
-                match = re.search(r"\{[\s\S]*\}", text)
-                if match:
-                    return json.loads(match.group(0))
-            except Exception as e:
-                logger.warning("Failed to parse AI JSON", extra={"error": str(e)})
-            return {}
+        console.print(Panel(panel_text, border_style="red", title="STRESSED Report"))

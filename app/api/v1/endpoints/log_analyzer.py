@@ -1,82 +1,65 @@
-"""
-Log Analyzer API Endpoints
-- File upload + progress
-- Async analysis (BackgroundTasks)
-- Progress & results retrieval
-- Query-based log analysis (AI-assisted)
-- Optional persistence and AI reasoning
-"""
+# app/api/v1/endpoints/log_analyzer.py
 
 from __future__ import annotations
-
 import os
-import re
 import uuid
 import json
 import logging
-import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
-from fastapi import (
-    APIRouter,
-    UploadFile,
-    File,
-    HTTPException,
-    BackgroundTasks,
-    Query,
-)
+from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 import aiofiles
 
-# Local service imports
-from app.services.log_services import LogAnalyzerService
-from app.models.log_analyzer_models import SearchRequest, AIAnalysisRequest
-
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["log-analyzer"])
 
-# --- Config ---
 UPLOAD_DIR = Path(os.environ.get("LOG_UPLOAD_DIR", "data/uploads"))
 PERSIST_DIR = Path(os.environ.get("LOG_ANALYSIS_PERSIST_DIR", "data/analysis_store"))
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 PERSIST_DIR.mkdir(parents=True, exist_ok=True)
 
-# --- In-memory state ---
 upload_progress: Dict[str, Dict[str, Any]] = {}
 analysis_tasks: Dict[str, Dict[str, Any]] = {}
 analysis_results: Dict[str, Dict[str, Any]] = {}
 
-# Service instance
-log_analyzer_service = LogAnalyzerService()
+_log_service_instance = None
 
-# ---------------------------------------------------------------------------
+
+def get_log_service():
+    """Singleton LogAnalyzerService"""
+    global _log_service_instance
+    if _log_service_instance is None:
+        from app.services.log_services import LogAnalyzerService  # type: ignore
+        _log_service_instance = LogAnalyzerService()
+    return _log_service_instance
+
+
+# -----------------------------
 # Models
-# ---------------------------------------------------------------------------
+# -----------------------------
 
 class DateRangeFilter(BaseModel):
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
     time_period: Optional[int] = Field(None, description="Time period in hours")
 
-class AIQuestionRequest(BaseModel):
-    """User-driven analysis question."""
-    question: str = Field(..., example="Why are there so many authentication errors after midnight?")
-    context_size: int = Field(100, description="Number of related log entries to consider")
 
-# ---------------------------------------------------------------------------
+# -----------------------------
 # Helpers
-# ---------------------------------------------------------------------------
+# -----------------------------
 
-def persist_result_to_file(analysis_id: str, result: Dict[str, Any]) -> None:
+def persist_result_to_file(analysis_id: str, result: Dict[str, Any]):
     try:
         path = PERSIST_DIR / f"{analysis_id}.json"
         with open(path, "w", encoding="utf-8") as fh:
-            json.dump(result, fh, default=str)
+            json.dump(result, fh, default=str, indent=2)
     except Exception:
-        logger.exception("Failed to persist analysis result to disk")
+        logger.exception("Failed to persist analysis result")
+
 
 async def safe_write_file(path: Path, upload: UploadFile) -> int:
     size = 0
@@ -87,61 +70,20 @@ async def safe_write_file(path: Path, upload: UploadFile) -> int:
             size += len(chunk)
     return size
 
-# ---------------------------------------------------------------------------
-# Upload & Analysis
-# ---------------------------------------------------------------------------
 
-@router.post("/upload")
-async def upload_log_file(file: UploadFile = File(...)) -> JSONResponse:
-    upload_id = str(uuid.uuid4())
-    filename = file.filename or "upload.log"
-    dest = UPLOAD_DIR / f"{upload_id}_{filename}"
+# -----------------------------
+# Background Workers
+# -----------------------------
 
-    upload_progress[upload_id] = {
-        "status": "uploading",
-        "progress": 0,
-        "filename": filename,
-        "file_path": str(dest),
-        "started_at": datetime.utcnow().isoformat(),
-    }
-
-    try:
-        size = await safe_write_file(dest, file)
-        upload_progress[upload_id].update({
-            "status": "completed",
-            "progress": 100,
-            "message": "Upload completed",
-            "size_bytes": size,
-            "completed_at": datetime.utcnow().isoformat(),
-        })
-        return JSONResponse({"upload_id": upload_id, "filename": filename, "message": "uploaded"})
-    except Exception as e:
-        logger.exception("Upload failed")
-        upload_progress[upload_id].update({"status": "failed", "message": str(e)})
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/upload/progress/{upload_id}")
-async def get_upload_progress(upload_id: str) -> JSONResponse:
-    info = upload_progress.get(upload_id)
-    if not info:
-        raise HTTPException(status_code=404, detail="Upload not found")
-    return JSONResponse(info)
-
-
-# ---------------------------------------------------------------------------
-# Background Worker
-# ---------------------------------------------------------------------------
-async def background_analysis_worker(analysis_id: str, file_path: str, date_filter: Optional[DateRangeFilter]):
-    print(f"[DEBUG] 🟡 Background worker started for analysis_id={analysis_id}, file_path={file_path}")
-    task = analysis_tasks[analysis_id]
+async def background_analysis_worker(analysis_id: str, file_path: str, date_filter: Optional[DateRangeFilter] = None):
+    logger.info(f"🟡 Background worker started | analysis_id={analysis_id}")
+    task = analysis_tasks.setdefault(analysis_id, {})
     try:
         task.update({"status": "processing", "progress": 10, "message": "Parsing logs"})
+        service = get_log_service()
+        results: dict = await service.analyze_log_file(analysis_id, file_path, date_filter)
 
-        # Run actual analysis
-        results = await log_analyzer_service.analyze_log_file(analysis_id, file_path, date_filter, task)
-
-        # Save results in-memory & persist
+        # Persist and generate reports
         task.update({
             "status": "completed",
             "progress": 100,
@@ -152,22 +94,23 @@ async def background_analysis_worker(analysis_id: str, file_path: str, date_filt
         analysis_results[analysis_id] = results
         persist_result_to_file(analysis_id, results)
 
-        print(f"[DEBUG] ✅ Background worker finished for {analysis_id} with status=completed")
+        from app.services.report_generator import LogReportGenerator
+        reporter = LogReportGenerator(output_dir=str(PERSIST_DIR))
+        reporter.generate_reports(analysis_id, results)
+
+        logger.info(f"✅ Background worker finished | analysis_id={analysis_id}")
     except Exception as e:
-        print(f"[ERROR] ❌ Background analysis failed for {analysis_id}: {e}")
-        task.update({
-            "status": "failed",
-            "message": str(e),
-            "progress": 0
-        })
-        logger.exception("Background analysis failed for %s: %s", analysis_id, e)
-        
+        logger.exception("❌ Background analysis failed | analysis_id=%s", analysis_id)
+        task.update({"status": "failed", "message": str(e), "progress": 0})
+
+
+# -----------------------------
+# Single File Analysis
+# -----------------------------
+
 @router.post("/analyze/{upload_id}")
-async def analyze_log_file(
-    upload_id: str,
-    background_tasks: BackgroundTasks,
-    date_filter: Optional[DateRangeFilter] = None
-) -> JSONResponse:
+async def analyze_log_file(upload_id: str, background_tasks: BackgroundTasks,
+                           date_filter: Optional[DateRangeFilter] = None) -> JSONResponse:
     upload = upload_progress.get(upload_id)
     if not upload:
         raise HTTPException(status_code=404, detail="Upload not found")
@@ -190,6 +133,7 @@ async def analyze_log_file(
     background_tasks.add_task(background_analysis_worker, analysis_id, file_path, date_filter)
     return JSONResponse({"analysis_id": analysis_id, "message": "analysis started"})
 
+
 @router.get("/analyze/progress/{analysis_id}")
 async def get_analysis_progress(analysis_id: str) -> JSONResponse:
     task = analysis_tasks.get(analysis_id)
@@ -197,15 +141,11 @@ async def get_analysis_progress(analysis_id: str) -> JSONResponse:
         raise HTTPException(status_code=404, detail="Analysis not found")
     return JSONResponse(task)
 
+
 @router.get("/analyze/results/{analysis_id}")
 async def get_analysis_results(analysis_id: str) -> JSONResponse:
-    print(f"[DEBUG] Fetching results for {analysis_id}")
     task = analysis_tasks.get(analysis_id)
-    print(f"[DEBUG] Task found: {task}")
-    if not task:
-        raise HTTPException(status_code=404, detail="Analysis not found")
-    if task.get("status") != "completed":
-        print(f"[DEBUG] Task not completed yet (status={task.get('status')})")
+    if not task or task.get("status") != "completed":
         raise HTTPException(status_code=400, detail="Analysis not completed yet")
 
     results = task.get("results") or analysis_results.get(analysis_id)
@@ -214,80 +154,109 @@ async def get_analysis_results(analysis_id: str) -> JSONResponse:
         if path.exists():
             with open(path, "r", encoding="utf-8") as fh:
                 results = json.load(fh)
-                print(f"[DEBUG] Loaded persisted results for {analysis_id}")
-    print(f"[DEBUG] Returning results for {analysis_id}")
     return JSONResponse(results or {})
-# ---------------------------------------------------------------------------
-# AI Question Endpoint (NEW)
-# ---------------------------------------------------------------------------
-@router.post("/ai/question/{analysis_id}", summary="Ask AI about a specific log analysis",
-             response_description="AI-generated answer and related logs")
-async def ai_question_analysis(analysis_id: str, request: AIQuestionRequest) -> JSONResponse:
-    """
-    Perform AI-based analysis for a user question regarding previously analyzed logs.
 
-    - **analysis_id**: ID of the completed log analysis
-    - **question**: The AI query about the logs
-    - **context_size**: Number of log entries to consider for AI context
 
-    Returns:
-    - answer: AI-generated insights
-    - related_logs: Relevant log entries
-    - confidence: Confidence score from AI (if available)
-    - timestamp: Response generation time
-    """
-    task = analysis_tasks.get(analysis_id)
-    if not task:
-        raise HTTPException(status_code=404, detail="Analysis not found")
-    if task.get("status") != "completed":
-        raise HTTPException(status_code=400, detail="Analysis not yet completed")
+# -----------------------------
+# Multi-File Analysis
+# -----------------------------
 
-    try:
-        logger.info("Performing AI question analysis for %s: %s", analysis_id, request.question)
-        result = await log_analyzer_service.ai_natural_query(
-            analysis_id,
-            request.question,
-            context_size=request.context_size
-        )
+@router.post("/analyze-multiple")
+async def analyze_multiple_logs(
+    background_tasks: BackgroundTasks,
+    files: List[UploadFile] = File(...),
+    provider: Optional[str] = Query(None),
+):
+    if not files:
+        raise HTTPException(status_code=400, detail="No log files uploaded")
 
-        return JSONResponse({
-            "analysis_id": analysis_id,
-            "question": request.question,
-            "answer": result.get("answer", "No insights found."),
-            "related_logs": result.get("context", []),
-            "confidence": result.get("confidence", None),
-            "timestamp": datetime.utcnow().isoformat(),
-        })
-    except Exception as e:
-        logger.exception("AI question analysis failed for %s: %s", analysis_id, e)
-        raise HTTPException(status_code=500, detail=f"AI question analysis failed: {str(e)}")
+    request_id = str(uuid.uuid4())
+    batch_folder_name = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
+    batch_folder = UPLOAD_DIR / batch_folder_name
+    batch_folder.mkdir(parents=True, exist_ok=True)
 
-# ---------------------------------------------------------------------------
-# Cleanup & Misc
-# ---------------------------------------------------------------------------
+    saved_paths = []
+    for upload in files:
+        dest = batch_folder / f"{request_id}_{upload.filename}"
+        await safe_write_file(dest, upload)
+        saved_paths.append(str(dest))
 
-@router.delete("/cleanup/{upload_id}")
-async def cleanup_upload(upload_id: str) -> JSONResponse:
-    info = upload_progress.pop(upload_id, None)
-    if not info:
-        raise HTTPException(status_code=404, detail="Upload not found")
+        # Track each file as uploaded
+        upload_id = str(uuid.uuid4())
+        upload_progress[upload_id] = {
+            "status": "completed",
+            "progress": 100,
+            "filename": upload.filename,
+            "file_path": str(dest),
+            "started_at": datetime.utcnow().isoformat(),
+            "completed_at": datetime.utcnow().isoformat(),
+        }
 
-    file_path = info.get("file_path")
-    if file_path and Path(file_path).exists():
+    # Initialize task with per-file progress
+    analysis_tasks[request_id] = {
+        "status": "queued",
+        "progress": 0,
+        "message": "queued",
+        "files": [Path(p).name for p in saved_paths],
+        "results": {},
+        "started_at": datetime.utcnow().isoformat(),
+    }
+
+    async def _multi_worker(req_id: str, paths: List[str], folder: Path):
+        task = analysis_tasks[req_id]
+        task.update({"status": "processing", "progress": 5, "message": "Analyzing files"})
+        results = {}
+
         try:
-            Path(file_path).unlink()
-        except Exception:
-            logger.exception("Failed to remove uploaded file %s", file_path)
+            service = get_log_service()
+            for idx, file_path in enumerate(paths):
+                file_result = await service.analyze_log_file(f"{req_id}_{idx}", file_path)
+                results[Path(file_path).name] = file_result
+                task["progress"] = int((idx + 1) / len(paths) * 100)
+                task["results"] = results
 
-    to_rm = [aid for aid, v in analysis_tasks.items() if v.get("upload_id") == upload_id]
-    for aid in to_rm:
-        analysis_tasks.pop(aid, None)
-        analysis_results.pop(aid, None)
-        p = PERSIST_DIR / f"{aid}.json"
-        if p.exists():
-            try:
-                p.unlink()
-            except Exception:
-                logger.exception("Failed to remove persisted result %s", p)
+            task.update({
+                "status": "completed",
+                "progress": 100,
+                "message": "All files analyzed",
+                "results": results,
+                "completed_at": datetime.utcnow().isoformat(),
+            })
+            analysis_results[req_id] = results
+            persist_result_to_file(req_id, results)
 
-    return JSONResponse({"message": "Cleanup completed"})
+            from app.services.report_generator import LogReportGenerator
+            reporter = LogReportGenerator(output_dir=str(PERSIST_DIR))
+            reporter.generate_reports(req_id, results)
+
+        except Exception as ex:
+            logger.exception("Background multi-file analysis failed | request_id=%s", req_id)
+            task.update({"status": "failed", "message": str(ex), "progress": 0})
+
+    background_tasks.add_task(_multi_worker, request_id, saved_paths, batch_folder)
+    return JSONResponse({"request_id": request_id, "message": "multi-file analysis queued"})
+
+
+@router.get("/analyze/multi-results/{request_id}")
+async def get_multi_analysis_results(request_id: str) -> JSONResponse:
+    task = analysis_tasks.get(request_id)
+    if not task:
+        # Try loading persisted JSON
+        path = PERSIST_DIR / f"{request_id}.json"
+        if path.exists():
+            with open(path, "r", encoding="utf-8") as fh:
+                results = json.load(fh)
+            return JSONResponse({"request_id": request_id, "status": "completed", "results": results})
+        raise HTTPException(status_code=404, detail="Analysis not found")
+
+    # Return in-progress or completed task
+    return JSONResponse({
+        "request_id": request_id,
+        "status": task.get("status"),
+        "message": task.get("message"),
+        "progress": task.get("progress", 0),
+        "files": task.get("files", []),
+        "results": task.get("results", {}),
+        "started_at": task.get("started_at"),
+        "completed_at": task.get("completed_at"),
+    })

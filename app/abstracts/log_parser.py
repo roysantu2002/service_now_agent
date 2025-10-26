@@ -5,7 +5,10 @@ from pydantic import BaseModel
 from datetime import datetime
 from enum import Enum
 
+from pyparsing import ABC
+
 from app.abstracts.base import BaseService
+
 
 
 class LogLevel(str, Enum):
@@ -38,13 +41,13 @@ class LogPattern(BaseModel):
 
 
 class ParseResult(BaseModel):
-    """Log parsing result."""
-    entries: List[LogEntry]
-    total_count: int
-    error_count: int
-    warning_count: int
-    patterns_matched: Dict[str, int]
-    parsing_errors: List[str]
+    file_name: str
+    entries: List[LogEntry] = []
+    error_count: int = 0
+    warning_count: int = 0
+    total_count: int = 0
+    parsing_errors: Dict[str, int] = {}         # <- dict
+    patterns_matched: Dict[str, int] = {}       # <- dict
 
 
 class BaseLogParser(BaseService):
@@ -94,4 +97,13 @@ class BaseLogParser(BaseService):
     @abstractmethod
     def get_supported_patterns(self) -> List[LogPattern]:
         """Get list of supported log patterns."""
+        pass
+
+class BaseLogParser(ABC):
+    @abstractmethod
+    async def parse_log_file(self, file_path: str) -> ParseResult:
+        pass
+
+    @abstractmethod
+    async def parse_multiple_logs(self, file_paths: List[str]) -> Dict[str, ParseResult]:
         pass

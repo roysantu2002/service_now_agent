@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from typing import List, Literal, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
 
@@ -85,3 +85,72 @@ class LogEntry(BaseModel):
 class DateRangeFilter(BaseModel):
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
+    
+class SeverityLevel(str, Enum):
+    CRITICAL = "CRITICAL"
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+    INFO = "INFO"
+
+
+class AttackType(str, Enum):
+    BRUTE_FORCE = "BRUTE_FORCE"
+    SQL_INJECTION = "SQL_INJECTION"
+    XSS = "XSS"
+    FILE_INCLUSION = "FILE_INCLUSION"
+    COMMAND_INJECTION = "COMMAND_INJECTION"
+    PRIVILEGE_ESCALATION = "PRIVILEGE_ESCALATION"
+    UNKNOWN = "UNKNOWN"
+
+
+class IPAddress(BaseModel):
+    ip_address: str = Field(pattern=r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$")
+
+
+class ResponseCode(BaseModel):
+    response_code: str = Field(pattern=r"^\d{3}$")
+
+
+class WebTrafficPattern(BaseModel):
+    url_path: str
+    http_method: str
+    hits_count: int
+    response_codes: Dict[str, int]
+    unique_ips: int
+
+
+class WebSecurityEvent(BaseModel):
+    relevant_log_entries: List[str]
+    reasoning: str
+    event_type: str
+    severity: SeverityLevel
+    requires_human_review: bool
+    confidence_score: float = Field(ge=0.0, le=1.0)
+    url_pattern: str
+    http_method: Literal["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "TRACE", "CONNECT"]
+    source_ips: List[IPAddress]
+    response_codes: List[ResponseCode]
+    user_agents: List[str]
+    possible_attack_patterns: List[AttackType]
+    recommended_actions: List[str]
+
+
+class LogAnalysis(BaseModel):
+    file_name: str
+    summary: str
+    observations: List[str]
+    planning: List[str]
+    events: List[WebSecurityEvent]
+    traffic_patterns: List[WebTrafficPattern]
+    highest_severity: Optional[SeverityLevel]
+    requires_immediate_attention: bool
+
+
+class MultiLogAnalysis(BaseModel):
+    analysis_id: str
+    overall_summary: str
+    aggregated_findings: List[str]
+    highest_severity_overall: Optional[SeverityLevel]
+    combined_events: List[WebSecurityEvent]
+    individual_analyses: List[LogAnalysis]
