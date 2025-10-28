@@ -98,7 +98,7 @@ def format_validation_error(err: ValidationError) -> str:
 
 
 def ensure_log_analysis_shape(result: Dict[str, Any]) -> Dict[str, Any]:
-    """Normalize service output to conform to LogAnalysis schema."""
+    """Normalize service output but preserve all keys including api_error_code_summary."""
     if not isinstance(result, dict):
         result = jsonable_encoder(result)
 
@@ -106,9 +106,8 @@ def ensure_log_analysis_shape(result: Dict[str, Any]) -> Dict[str, Any]:
     result.pop("analysis_id", None)
 
     summary = result.get("summary", "")
-    # 🩹 FIX: convert escaped newlines into actual newlines
     if isinstance(summary, str):
-        summary = re.sub(r"\\n", "\n", summary).strip()
+        summary = summary.replace("\\n", "\n").strip()
 
     return {
         "summary": summary,
@@ -118,8 +117,8 @@ def ensure_log_analysis_shape(result: Dict[str, Any]) -> Dict[str, Any]:
         "traffic_patterns": result.get("traffic_patterns", []),
         "highest_severity": result.get("highest_severity"),
         "requires_immediate_attention": result.get("requires_immediate_attention", False),
+        "api_error_code_summary": result.get("api_error_code_summary", {}),  # ✅ ensure field always exists
     }
-
 
 # ==========================================================
 # Background Workers

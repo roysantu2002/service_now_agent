@@ -1,0 +1,30 @@
+{
+  "file_name": "1e35c094-d8d8-4ed1-a47b-8fcf4a7a34c1_apache-10k.log",
+  "summary": "```json\n{\n  \"summary\": {\n    \"total_entries\": 100,\n    \"error_entries\": 40,\n    \"notice_entries\": 60\n  },\n  \"observations\": [\n    \"Multiple entries indicate that the LDAP SSL support is unavailable.\",\n    \"Several errors related to the creation of channels and workers, indicating potential configuration issues.\",\n    \"Repeated 'Directory index forbidden by rule' errors suggest that directory browsing is not allowed for the specified path.\",\n    \"Multiple 'File does not exist' errors for the same file indicate a potential probing or scanning activity.\"\n  ],\n  \"planning\": {\n    \"recommendations\": [\n      \"Investigate the LDAP configuration to enable SSL support if required.\",\n      \"Review the configuration for channel and worker creation errors to ensure proper setup.\",\n      \"Consider implementing security measures to handle repeated access attempts to forbidden directories.\"\n    ]\n  },\n  \"events\": [\n    {\n      \"timestamp\": \"2005-06-09T06:07:04\",\n      \"type\": \"notice\",\n      \"message\": \"LDAP: Built with OpenLDAP LDAP SDK\"\n    },\n    {\n      \"timestamp\": \"2005-06-09T06:07:05\",\n      \"type\": \"error\",\n      \"message\": \"env.createBean2(): Factory error creating channel.jni:jni\"\n    },\n    {\n      \"timestamp\": \"2005-06-09T19:23:31\",\n      \"type\": \"error\",\n      \"message\": \"File does not exist: /var/www/html/sumthin\"\n    },\n    {\n      \"timestamp\": \"2005-06-10T01:23:50\",\n      \"type\": \"error\",\n      \"message\": \"Invalid method in request get /scripts/.%252e/.%252e/winnt/system32/cmd.exe?/c+dir\"\n    }\n  ],\n  \"traffic_patterns\": {\n    \"high_traffic_times\": [\n      \"2005-06-09T19:23:31\",\n      \"2005-06-10T03:37:39\"\n    ],\n    \"common_errors\": [\n      \"Directory index forbidden by rule\",\n      \"File does not exist\"\n    ]\n  },\n  \"highest_severity\": {\n    \"error_count\": 40,\n    \"most_common_error\": \"Directory index forbidden by rule\"\n  }\n}\n```",
+  "observations": [],
+  "planning": [],
+  "events": [],
+  "traffic_patterns": [],
+  "highest_severity": null,
+  "requires_immediate_attention": false,
+  "api_error_code_summary": {
+    "4xx": 0,
+    "5xx": 0,
+    "199": 24,
+    "119": 23,
+    "116": 10,
+    "194": 10,
+    "250": 10,
+    "218": 4,
+    "171": 3,
+    "203": 2,
+    "143": 2,
+    "216": 2,
+    "204": 2,
+    "222": 2,
+    "211": 2,
+    "142": 2,
+    "150": 2,
+    "219": 2
+  }
+}

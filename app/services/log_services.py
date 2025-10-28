@@ -254,13 +254,12 @@ class LogAnalyzerService:
     async def analyze_log_file(self, request_id: str, file_path: str, date_filter: Optional[Any] = None) -> LogAnalysis:
         """
         Analyze a single log file and return structured LogAnalysis (Pydantic model).
-        This function always returns a LogAnalysis instance (safe to .dict()).
+        This version also computes api_error_code_summary (e.g. 400, 404, 500 counts).
         """
         await self._ensure_initialized()
         console.log(f"[Step 0] Analyzing single file: {file_path}")
 
         try:
-            # Parse file(s) using existing parser
             parse_results = await self.parser.parse_multiple_logs([file_path])
             df = self.parser.logs_to_dataframe(parse_results)
             console.log(f"[Step 1] Parsed {len(df)} rows from file {file_path}")
@@ -276,17 +275,25 @@ class LogAnalyzerService:
                     traffic_patterns=[],
                     highest_severity=None,
                     requires_immediate_attention=False,
+                    api_error_code_summary={}
                 )
 
-            # Prepare combined text for AI (first 100 rows)
+            # Compute HTTP-like error code summary
+            api_error_code_summary = {}
+            if "message" in df.columns:
+                for code in ["400", "401", "403", "404", "408", "429", "500", "502", "503", "504"]:
+                    count = df["message"].str.contains(code, regex=False, case=False, na=False).sum()
+                    if count > 0:
+                        api_error_code_summary[code] = int(count)
+
             combined_text = "\n".join(df["message"].tolist()[:100])
             console.log(f"[Step 3] Prepared text for AI (file: {file_path})")
 
             prompt = f"""Analyze the following log entries and return structured JSON matching the LogAnalysis schema.
-If possible return JSON only. If you cannot produce full schema, at least include summary, observations, planning, events, traffic_patterns, highest_severity.
-Log entries:
-{combined_text}
-"""
+    Include summary, observations, planning, events, traffic_patterns, highest_severity.
+    Log entries:
+    {combined_text}
+    """
 
             ai_request = {
                 "prompt": prompt,
@@ -300,11 +307,10 @@ Log entries:
                 raw_text = await self._extract_ai_text(ai_response)
                 parsed = self._parse_ai_text_to_struct(raw_text)
                 normalized = self._normalize_to_log_analysis(parsed, file_path=file_path)
+                normalized["api_error_code_summary"] = api_error_code_summary  # ✅ attach here
 
-                # Build LogAnalysis Pydantic model (this validates)
                 result = LogAnalysis(**normalized)
             except Exception as e:
-                # If validation fails or AI failed, create fallback LogAnalysis
                 logger.error("AI analysis or validation failed", error=str(e), traceback=traceback.format_exc())
                 result = LogAnalysis(
                     file_name=Path(file_path).name,
@@ -315,9 +321,9 @@ Log entries:
                     traffic_patterns=[],
                     highest_severity=None,
                     requires_immediate_attention=False,
+                    api_error_code_summary=api_error_code_summary,
                 )
 
-            # Save results to a per-analysis folder
             analysis_id = str(uuid.uuid4())
             folder = self.batch_folder / analysis_id
             folder.mkdir(parents=True, exist_ok=True)
@@ -326,7 +332,6 @@ Log entries:
                 json.dump(result.dict(), f, indent=2, default=str)
             console.log(f"[Step 4] Single-file LogAnalysis JSON saved: {json_path}")
 
-            # Generate report (best-effort)
             try:
                 self.reporter.output_dir = str(folder)
                 self.reporter.generate_reports(analysis_id, result.dict())
@@ -347,6 +352,7 @@ Log entries:
                 traffic_patterns=[],
                 highest_severity=None,
                 requires_immediate_attention=False,
+                api_error_code_summary={},
             )
 
     # -------------------------------------------------------------------

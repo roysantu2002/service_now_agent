@@ -145,6 +145,7 @@ class LogAnalysis(BaseModel):
     traffic_patterns: List[WebTrafficPattern]
     highest_severity: Optional[SeverityLevel]
     requires_immediate_attention: bool
+    api_error_code_summary: Optional[Dict[str, int]] = None  # 👈 new field
 
 
 class MultiLogAnalysis(BaseModel):

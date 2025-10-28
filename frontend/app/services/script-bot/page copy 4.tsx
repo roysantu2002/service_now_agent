@@ -10,7 +10,6 @@ export default function ScriptBotPage() {
     'Generate an Ansible playbook to restart VM service on Ubuntu.'
   );
   const [techComment, setTechComment] = useState('Include pre-check for service status.');
-  const [provider, setProvider] = useState('gemini'); // 👈 new dropdown state
 
   // separate loading states
   const [loadingSubmit, setLoadingSubmit] = useState(false);
@@ -67,7 +66,7 @@ export default function ScriptBotPage() {
     setLoadingScript(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/script/script/create?provider=${provider}`, { // 👈 dynamic provider
+      const res = await fetch(`${API_BASE_URL}/script/script/create?provider=gemini`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -109,7 +108,7 @@ export default function ScriptBotPage() {
             <label className="block text-sm font-medium text-gray-400">Use Case Name</label>
             <input
               type="text"
-              className="w-full p-2 border border-gray-700 bg-gray-900 rounded-md text-gray-200 focus:ring-emerald-500 focus:border-emerald-500"
+              className="w-full p-2 border border-gray-700 bg-gray-900 rounded-md text-gray-200 placeholder-gray-500 focus:ring-emerald-500 focus:border-emerald-500"
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={!!submitResult}
@@ -119,7 +118,7 @@ export default function ScriptBotPage() {
           <div>
             <label className="block text-sm font-medium text-gray-400">Description</label>
             <textarea
-              className="w-full p-2 border border-gray-700 bg-gray-900 rounded-md text-gray-200 focus:ring-emerald-500 focus:border-emerald-500"
+              className="w-full p-2 border border-gray-700 bg-gray-900 rounded-md text-gray-200 placeholder-gray-500 focus:ring-emerald-500 focus:border-emerald-500"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               disabled={!!submitResult}
@@ -132,28 +131,11 @@ export default function ScriptBotPage() {
             </label>
             <input
               type="text"
-              className="w-full p-2 border border-gray-700 bg-gray-900 rounded-md text-gray-200 focus:ring-emerald-500 focus:border-emerald-500"
+              className="w-full p-2 border border-gray-700 bg-gray-900 rounded-md text-gray-200 placeholder-gray-500 focus:ring-emerald-500 focus:border-emerald-500"
               value={techComment}
               onChange={(e) => setTechComment(e.target.value)}
               disabled={!!submitResult}
             />
-          </div>
-
-          {/* 👇 New LLM Provider Dropdown */}
-          <div>
-            <label className="block text-sm font-medium text-gray-400">LLM Provider</label>
-            <select
-              className="w-full p-2 border border-gray-700 bg-gray-900 rounded-md text-gray-200 focus:ring-emerald-500 focus:border-emerald-500"
-              value={provider}
-              onChange={(e) => setProvider(e.target.value)}
-              disabled={loadingScript}
-            >
-              <option value="gemini">Gemini</option>
-              <option value="openai">OpenAI</option>
-              <option value="claude">Claude</option>
-              <option value="mistral">Mistral</option>
-              <option value="local">Local</option>
-            </select>
           </div>
 
           <button
