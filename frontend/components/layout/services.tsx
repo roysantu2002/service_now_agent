@@ -24,7 +24,6 @@ import {
   Cog6ToothIcon,
 } from "@heroicons/react/24/outline";
 import { Service } from "@/types";
-
 const services: Service[] = [
   {
     id: "middleware",
@@ -48,16 +47,17 @@ const services: Service[] = [
     enabled: true,
     category: "analytics",
   },
-  // {
-  //   id: 'databases',
-  //   name: 'Intelligent Databases',
-  //   description: 'AI-optimized data handling with auto-tuning, indexing, and performance insights.',
-  //   icon: 'DatabaseIcon',
-  //   color: 'from-green-500 to-emerald-600',
-  //   endpoint: '/api/databases',
-  //   enabled: true,
-  //   category: 'data'
-  // },
+  {
+    id: "script-bot",
+    name: "Script Bot",
+    description:
+      "AI-powered automation bot that writes, validates, and executes IT and DevOps scripts across environments.",
+    icon: "WrenchScrewdriverIcon",
+    color: "from-emerald-500 to-teal-600",
+    endpoint: "/api/script-bot",
+    enabled: true,
+    category: "automation",
+  },
   {
     id: "eus",
     name: "End User Services (EUS)",
@@ -169,6 +169,7 @@ const services: Service[] = [
     category: "integration",
   },
 ];
+
 
 const iconMap = {
   DocumentMagnifyingGlassIcon,

@@ -1,6 +1,7 @@
 # app/api/v1/endpoints/log_analyzer.py
 
 from __future__ import annotations
+import re
 import os
 import uuid
 import json
@@ -9,9 +10,17 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks, Query
+from fastapi import (
+    APIRouter,
+    UploadFile,
+    File,
+    HTTPException,
+    BackgroundTasks,
+    Query,
+)
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 import aiofiles
 
 logger = logging.getLogger(__name__)
@@ -29,8 +38,12 @@ analysis_results: Dict[str, Dict[str, Any]] = {}
 _log_service_instance = None
 
 
+# ==========================================================
+# Singleton Loader
+# ==========================================================
+
 def get_log_service():
-    """Singleton LogAnalyzerService"""
+    """Return a singleton instance of LogAnalyzerService."""
     global _log_service_instance
     if _log_service_instance is None:
         from app.services.log_services import LogAnalyzerService  # type: ignore
@@ -38,9 +51,9 @@ def get_log_service():
     return _log_service_instance
 
 
-# -----------------------------
+# ==========================================================
 # Models
-# -----------------------------
+# ==========================================================
 
 class DateRangeFilter(BaseModel):
     start_date: Optional[datetime] = None
@@ -48,20 +61,23 @@ class DateRangeFilter(BaseModel):
     time_period: Optional[int] = Field(None, description="Time period in hours")
 
 
-# -----------------------------
+# ==========================================================
 # Helpers
-# -----------------------------
+# ==========================================================
 
 def persist_result_to_file(analysis_id: str, result: Dict[str, Any]):
+    """Persist analysis result to disk as JSON."""
     try:
         path = PERSIST_DIR / f"{analysis_id}.json"
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(result, fh, default=str, indent=2)
+        logger.info(f"✅ Result persisted to {path}")
     except Exception:
-        logger.exception("Failed to persist analysis result")
+        logger.exception(f"❌ Failed to persist analysis result: {analysis_id}")
 
 
 async def safe_write_file(path: Path, upload: UploadFile) -> int:
+    """Save uploaded file asynchronously."""
     size = 0
     chunk_size = 1024 * 1024
     async with aiofiles.open(path, "wb") as f:
@@ -71,46 +87,105 @@ async def safe_write_file(path: Path, upload: UploadFile) -> int:
     return size
 
 
-# -----------------------------
-# Background Workers
-# -----------------------------
+def format_validation_error(err: ValidationError) -> str:
+    """Return concise, readable Pydantic validation errors."""
+    messages = []
+    for e in err.errors():
+        loc = ".".join(str(x) for x in e.get("loc", []))
+        msg = e.get("msg", "")
+        messages.append(f"❌ Field `{loc}`: {msg}")
+    return "\n".join(messages)
 
-async def background_analysis_worker(analysis_id: str, file_path: str, date_filter: Optional[DateRangeFilter] = None):
+
+def ensure_log_analysis_shape(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize service output to conform to LogAnalysis schema."""
+    if not isinstance(result, dict):
+        result = jsonable_encoder(result)
+
+    result.pop("file_name", None)
+    result.pop("analysis_id", None)
+
+    summary = result.get("summary", "")
+    # 🩹 FIX: convert escaped newlines into actual newlines
+    if isinstance(summary, str):
+        summary = re.sub(r"\\n", "\n", summary).strip()
+
+    return {
+        "summary": summary,
+        "observations": result.get("observations", []),
+        "planning": result.get("planning", []),
+        "events": result.get("events", []),
+        "traffic_patterns": result.get("traffic_patterns", []),
+        "highest_severity": result.get("highest_severity"),
+        "requires_immediate_attention": result.get("requires_immediate_attention", False),
+    }
+
+
+# ==========================================================
+# Background Workers
+# ==========================================================
+
+async def background_analysis_worker(
+    analysis_id: str,
+    file_path: str,
+    date_filter: Optional[DateRangeFilter] = None
+):
+    """Run single-file analysis in background."""
     logger.info(f"🟡 Background worker started | analysis_id={analysis_id}")
     task = analysis_tasks.setdefault(analysis_id, {})
     try:
         task.update({"status": "processing", "progress": 10, "message": "Parsing logs"})
         service = get_log_service()
-        results: dict = await service.analyze_log_file(analysis_id, file_path, date_filter)
 
-        # Persist and generate reports
+        # Perform the actual analysis
+        results = await service.analyze_log_file(analysis_id, file_path, date_filter)
+
+        if hasattr(results, "dict"):
+            results = results.dict()
+        elif not isinstance(results, dict):
+            results = jsonable_encoder(results)
+
+        results = ensure_log_analysis_shape(results)
+
+        # Persist and update task
         task.update({
             "status": "completed",
             "progress": 100,
             "message": "Analysis completed",
             "results": results,
-            "completed_at": datetime.utcnow().isoformat()
+            "completed_at": datetime.utcnow().isoformat(),
         })
         analysis_results[analysis_id] = results
         persist_result_to_file(analysis_id, results)
 
-        from app.services.report_generator import LogReportGenerator
-        reporter = LogReportGenerator(output_dir=str(PERSIST_DIR))
-        reporter.generate_reports(analysis_id, results)
+        # Optional: Try report generation
+        try:
+            from app.services.report_generator import LogReportGenerator
+            reporter = LogReportGenerator(output_dir=str(PERSIST_DIR))
+            reporter.generate_reports(analysis_id, results)
+        except Exception:
+            logger.warning("Report generation failed for %s", analysis_id, exc_info=True)
 
         logger.info(f"✅ Background worker finished | analysis_id={analysis_id}")
+    except ValidationError as ve:
+        formatted = format_validation_error(ve)
+        task.update({"status": "failed", "message": formatted, "progress": 0})
+        logger.error(f"Validation failed for analysis {analysis_id}:\n{formatted}")
     except Exception as e:
         logger.exception("❌ Background analysis failed | analysis_id=%s", analysis_id)
         task.update({"status": "failed", "message": str(e), "progress": 0})
 
 
-# -----------------------------
+# ==========================================================
 # Single File Analysis
-# -----------------------------
+# ==========================================================
 
 @router.post("/analyze/{upload_id}")
-async def analyze_log_file(upload_id: str, background_tasks: BackgroundTasks,
-                           date_filter: Optional[DateRangeFilter] = None) -> JSONResponse:
+async def analyze_log_file(
+    upload_id: str,
+    background_tasks: BackgroundTasks,
+    date_filter: Optional[DateRangeFilter] = None,
+) -> JSONResponse:
     upload = upload_progress.get(upload_id)
     if not upload:
         raise HTTPException(status_code=404, detail="Upload not found")
@@ -157,9 +232,9 @@ async def get_analysis_results(analysis_id: str) -> JSONResponse:
     return JSONResponse(results or {})
 
 
-# -----------------------------
+# ==========================================================
 # Multi-File Analysis
-# -----------------------------
+# ==========================================================
 
 @router.post("/analyze-multiple")
 async def analyze_multiple_logs(
@@ -181,9 +256,7 @@ async def analyze_multiple_logs(
         await safe_write_file(dest, upload)
         saved_paths.append(str(dest))
 
-        # Track each file as uploaded
-        upload_id = str(uuid.uuid4())
-        upload_progress[upload_id] = {
+        upload_progress[str(uuid.uuid4())] = {
             "status": "completed",
             "progress": 100,
             "filename": upload.filename,
@@ -192,7 +265,7 @@ async def analyze_multiple_logs(
             "completed_at": datetime.utcnow().isoformat(),
         }
 
-    # Initialize task with per-file progress
+    # Initialize batch task
     analysis_tasks[request_id] = {
         "status": "queued",
         "progress": 0,
@@ -202,16 +275,28 @@ async def analyze_multiple_logs(
         "started_at": datetime.utcnow().isoformat(),
     }
 
-    async def _multi_worker(req_id: str, paths: List[str], folder: Path):
+    async def _multi_worker(req_id: str, paths: List[str]):
         task = analysis_tasks[req_id]
         task.update({"status": "processing", "progress": 5, "message": "Analyzing files"})
         results = {}
-
         try:
             service = get_log_service()
             for idx, file_path in enumerate(paths):
-                file_result = await service.analyze_log_file(f"{req_id}_{idx}", file_path)
-                results[Path(file_path).name] = file_result
+                try:
+                    file_result = await service.analyze_log_file(f"{req_id}_{idx}", file_path)
+                    if hasattr(file_result, "dict"):
+                        file_result = file_result.dict()
+                    elif not isinstance(file_result, dict):
+                        file_result = jsonable_encoder(file_result)
+
+                    # ✅ Normalize to match LogAnalysis structure
+                    file_result = ensure_log_analysis_shape(file_result)
+                    results[Path(file_path).name] = file_result
+                except ValidationError as ve:
+                    results[Path(file_path).name] = {"error": format_validation_error(ve)}
+                except Exception as ex:
+                    results[Path(file_path).name] = {"error": str(ex)}
+
                 task["progress"] = int((idx + 1) / len(paths) * 100)
                 task["results"] = results
 
@@ -224,16 +309,11 @@ async def analyze_multiple_logs(
             })
             analysis_results[req_id] = results
             persist_result_to_file(req_id, results)
-
-            from app.services.report_generator import LogReportGenerator
-            reporter = LogReportGenerator(output_dir=str(PERSIST_DIR))
-            reporter.generate_reports(req_id, results)
-
         except Exception as ex:
-            logger.exception("Background multi-file analysis failed | request_id=%s", req_id)
+            logger.exception("❌ Multi-file analysis failed | request_id=%s", req_id)
             task.update({"status": "failed", "message": str(ex), "progress": 0})
 
-    background_tasks.add_task(_multi_worker, request_id, saved_paths, batch_folder)
+    background_tasks.add_task(_multi_worker, request_id, saved_paths)
     return JSONResponse({"request_id": request_id, "message": "multi-file analysis queued"})
 
 
@@ -241,16 +321,18 @@ async def analyze_multiple_logs(
 async def get_multi_analysis_results(request_id: str) -> JSONResponse:
     task = analysis_tasks.get(request_id)
     if not task:
-        # Try loading persisted JSON
         path = PERSIST_DIR / f"{request_id}.json"
         if path.exists():
             with open(path, "r", encoding="utf-8") as fh:
                 results = json.load(fh)
-            return JSONResponse({"request_id": request_id, "status": "completed", "results": results})
+            return JSONResponse({
+                "request_id": request_id,
+                "status": "completed",
+                "results": results
+            })
         raise HTTPException(status_code=404, detail="Analysis not found")
 
-    # Return in-progress or completed task
-    return JSONResponse({
+    return JSONResponse(content=jsonable_encoder({
         "request_id": request_id,
         "status": task.get("status"),
         "message": task.get("message"),
@@ -259,4 +341,4 @@ async def get_multi_analysis_results(request_id: str) -> JSONResponse:
         "results": task.get("results", {}),
         "started_at": task.get("started_at"),
         "completed_at": task.get("completed_at"),
-    })
+    }))

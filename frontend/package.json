@@ -21,6 +21,8 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "html2pdf": "^0.0.11",
+    "html2pdf.js": "^0.12.1",
     "lucide-react": "^0.447.0",
     "next": "^15.0.2",
     "next-auth": "^4.24.8",

@@ -30,7 +30,7 @@ try:
 except Exception as e:
     logger.error("Error importing RAG Chat endpoint", error=str(e))
 
-# ✅ New: Log Analyzer Endpoint
+# ✅ Log Analyzer Endpoint
 try:
     from app.api.v1.endpoints import log_analyzer
     routers.append(("log-analyzer", log_analyzer.router))
@@ -38,7 +38,15 @@ try:
 except Exception as e:
     logger.error("Error importing Log Analyzer endpoint", error=str(e))
 
-# --- Include routers ---
+# ✅ NEW: Script Creator Endpoint
+try:
+    from app.api.v1.endpoints import script_creator
+    routers.append(("script", script_creator.router))
+    logger.debug("Script Creator endpoint imported successfully")
+except Exception as e:
+    logger.error("Error importing Script Creator endpoint", error=str(e))
+
+# --- Include routers dynamically ---
 for prefix, router in routers:
     api_router.include_router(router, prefix=f"/{prefix}", tags=[prefix])
     logger.debug("Included router", prefix=prefix, route_count=len(router.routes))

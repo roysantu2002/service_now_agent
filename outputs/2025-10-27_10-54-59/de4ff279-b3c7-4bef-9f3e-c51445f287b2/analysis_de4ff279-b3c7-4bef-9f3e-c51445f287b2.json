@@ -1,0 +1,10 @@
+{
+  "file_name": "fcdfb71a-de70-4e7d-b6a4-15e02c4cd427_access-10k.log",
+  "summary": "```json\n{\n  \"summary\": {\n    \"total_requests\": 100,\n    \"successful_requests\": 95,\n    \"failed_requests\": 5,\n    \"average_response_size\": 19500,\n    \"most_requested_endpoint\": \"/image/\"\n  },\n  \"observations\": {\n    \"high_traffic_ips\": [\n      \"40.77.167.129\",\n      \"91.99.72.15\",\n      \"2.177.12.140\"\n    ],\n    \"error_rate\": 5,\n    \"common_status_codes\": {\n      \"200\": 90,\n      \"404\": 5,\n      \"302\": 1\n    }\n  },\n  \"planning\": {\n    \"recommendations\": [\n      \"Monitor high traffic IPs for potential abuse.\",\n      \"Investigate the 404 errors to ensure resources are available.\",\n      \"Optimize response sizes for images to improve load times.\"\n    ]\n  },\n  \"events\": [\n    {\n      \"event_type\": \"GET\",\n      \"endpoint\": \"/filter/\",\n      \"status\": 200,\n      \"size\": 30577\n    },\n    {\n      \"event_type\": \"GET\",\n      \"endpoint\": \"/product/\",\n      \"status\": 404,\n      \"size\": 33617\n    }\n  ],\n  \"traffic_patterns\": {\n    \"peak_hours\": [\n      \"10:00-11:00\",\n      \"14:00-15:00\"\n    ],\n    \"low_hours\": [\n      \"02:00-03:00\"\n    ]\n  },\n  \"highest_severity\": {\n    \"status_code\": 404,\n    \"count\": 5,\n    \"endpoints\": [\n      \"/product/14926\",\n      \"/product/81900\"\n    ]\n  }\n}\n```",
+  "observations": [],
+  "planning": [],
+  "events": [],
+  "traffic_patterns": [],
+  "highest_severity": null,
+  "requires_immediate_attention": false
+}
