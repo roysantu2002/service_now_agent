@@ -276,3 +276,39 @@ class ServiceNowConnector(BaseServiceNowConnector):
         except Exception as e:
             logger.error("Error creating incident", error=str(e))
             raise ServiceNowError(str(e))
+    
+        # -------------------------------
+    # AI Integration Helpers
+    # -------------------------------
+    async def add_ai_prediction(self, sys_id: str, prediction_data: Optional[Dict[str, Any]] = None, field_name: str = "u_ai_analysis", **kwargs) -> ServiceNowResponse:
+        """
+        Store AI prediction/classification results back into ServiceNow.
+        Supports both dict and keyword-style calls.
+        """
+        if not self.client:
+            await self.initialize()
+
+        try:
+            import json
+            # Allow both dict or unpacked keyword args
+            if prediction_data is None:
+                prediction_data = kwargs
+            serialized = json.dumps(prediction_data, indent=2, ensure_ascii=False)
+
+            url = f"{self.base_url}/api/now/table/incident/{sys_id}"
+            payload = {field_name: serialized}
+
+            start_time = datetime.utcnow()
+            response = await self.client.patch(url, json=payload)
+            elapsed = (datetime.utcnow() - start_time).total_seconds()
+
+            if response.status_code == 200:
+                logger.info("AI prediction added to ServiceNow incident", sys_id=sys_id, field_name=field_name)
+                return ServiceNowResponse(success=True, data=response.json(), status_code=200, response_time=elapsed)
+            else:
+                logger.error("Failed to update ServiceNow with AI prediction", sys_id=sys_id, status_code=response.status_code, response_text=response.text)
+                return ServiceNowResponse(success=False, error=response.text, status_code=response.status_code, response_time=elapsed)
+
+        except Exception as e:
+            logger.error("Error adding AI prediction", sys_id=sys_id, error=str(e))
+            return ServiceNowResponse(success=False, error=str(e), status_code=500, response_time=0.0)

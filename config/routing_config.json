@@ -1,0 +1,118 @@
+{
+  "routing": {
+    "default_team": "general",
+    "fallback_enabled": true,
+    "case_sensitive": false,
+    "fuzzy_matching": true,
+    "confidence_threshold": 0.5
+  },
+  "teams": {
+    "general": {
+      "name": "General Support",
+      "priority": 1,
+      "capabilities": ["general", "basic", "help"],
+      "description": "Handles general inquiries and basic support requests"
+    },
+    "technical": {
+      "name": "Technical Support",
+      "priority": 2,
+      "capabilities": ["technical", "debugging", "code", "development"],
+      "description": "Handles technical issues, bugs, and development queries"
+    },
+    "billing": {
+      "name": "Billing Support",
+      "priority": 3,
+      "capabilities": ["billing", "payments", "subscription", "refunds"],
+      "description": "Handles billing, payment, and subscription-related issues"
+    },
+    "sales": {
+      "name": "Sales Team",
+      "priority": 4,
+      "capabilities": ["sales", "pricing", "enterprise", "quotes"],
+      "description": "Handles sales inquiries, pricing, and enterprise requests"
+    },
+    "security": {
+      "name": "Security Team",
+      "priority": 5,
+      "capabilities": ["security", "breach", "vulnerability", "compliance"],
+      "description": "Handles security-related incidents and compliance issues"
+    },
+    "legal": {
+      "name": "Legal Team",
+      "priority": 6,
+      "capabilities": ["legal", "contract", "terms", "privacy"],
+      "description": "Handles legal, compliance, and privacy-related matters"
+    }
+  },
+  "keywords": {
+    "technical": [
+      "bug", "error", "issue", "problem", "crash", "broken", "not working",
+      "failed", "exception", "debug", "stack trace", "console", "network",
+      "timeout", "connection", "api", "integration", "code", "development"
+    ],
+    "billing": [
+      "charge", "invoice", "refund", "payment", "subscription", "billing",
+      "credit", "card", "transaction", "receipt", "overcharge", "billing cycle",
+      "pricing", "cost", "plan", "upgrade", "downgrade", "cancel"
+    ],
+    "sales": [
+      "quote", "pricing", "enterprise", "demo", "trial", "purchase",
+      "buy", "business", "corporate", "bulk", "license", "contract",
+      "partnership", "reseller", "integration", "custom"
+    ],
+    "security": [
+      "security", "breach", "hack", "vulnerability", "compliance", "gdpr",
+      "privacy", "data", "leak", "attack", "malware", "phishing",
+      "unauthorized", "access", "authentication", "encryption"
+    ],
+    "legal": [
+      "legal", "contract", "terms", "privacy", "policy", "agreement",
+      "license", "copyright", "trademark", "dispute", "compliance",
+      "regulation", "audit", "investigation", "litigation"
+    ]
+  },
+  "routing_rules": [
+    {
+      "team": "security",
+      "keywords": ["security", "breach", "hack", "vulnerability"],
+      "type": "keyword_match",
+      "weight": 10,
+      "priority": 1
+    },
+    {
+      "team": "legal",
+      "keywords": ["legal", "contract", "terms", "privacy"],
+      "type": "keyword_match",
+      "weight": 9,
+      "priority": 2
+    },
+    {
+      "team": "billing",
+      "keywords": ["charge", "payment", "refund", "billing"],
+      "type": "keyword_match",
+      "weight": 8,
+      "priority": 3
+    },
+    {
+      "team": "sales",
+      "keywords": ["pricing", "enterprise", "demo", "trial"],
+      "type": "keyword_match",
+      "weight": 7,
+      "priority": 4
+    },
+    {
+      "team": "technical",
+      "keywords": ["bug", "error", "issue", "problem"],
+      "type": "keyword_match",
+      "weight": 6,
+      "priority": 5
+    },
+    {
+      "team": "general",
+      "keywords": ["help", "question", "support", "how"],
+      "type": "keyword_match",
+      "weight": 5,
+      "priority": 6
+    }
+  ]
+}

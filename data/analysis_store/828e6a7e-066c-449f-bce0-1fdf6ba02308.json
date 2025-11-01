@@ -1,0 +1,12 @@
+{
+  "828e6a7e-066c-449f-bce0-1fdf6ba02308_apache-10k.log": {
+    "summary": "```json\n{\n  \"summary\": {\n    \"total_entries\": 100,\n    \"notice_count\": 40,\n    \"error_count\": 60,\n    \"unique_clients\": 15\n  },\n  \"observations\": [\n    \"Multiple entries indicate that the LDAP SSL support is unavailable.\",\n    \"Several errors related to the creation of channels and workers, indicating potential configuration issues.\",\n    \"Repeated 'Directory index forbidden by rule' errors suggest that directory browsing is not allowed for the specified path.\",\n    \"Multiple 'File does not exist' errors for the same file indicate a potential probing or scanning activity.\"\n  ],\n  \"planning\": [\n    \"Review and update the LDAP configuration to enable SSL support if required.\",\n    \"Investigate the errors related to channel and worker creation to ensure proper configuration.\",\n    \"Consider implementing a more informative error page for forbidden directory access to improve user experience.\",\n    \"Monitor the repeated requests for non-existent files to identify potential malicious activity.\"\n  ],\n  \"events\": [\n    {\n      \"timestamp\": \"2005-06-09T06:07:04\",\n      \"event\": \"LDAP built with OpenLDAP SDK\"\n    },\n    {\n      \"timestamp\": \"2005-06-09T06:07:05\",\n      \"event\": \"Digest authentication secret generated\"\n    },\n    {\n      \"timestamp\": \"2005-06-09T06:07:19\",\n      \"event\": \"Apache configured and resuming normal operations\"\n    },\n    {\n      \"timestamp\": \"2005-06-09T19:23:31\",\n      \"event\": \"Multiple 'File does not exist' errors for /var/www/html/sumthin\"\n    }\n  ],\n  \"traffic_patterns\": {\n    \"high_traffic_times\": [\n      {\n        \"time\": \"2005-06-09T19:23:31\",\n        \"requests\": 15\n      }\n    ],\n    \"error_distribution\": {\n      \"directory_index_forbidden\": 20,\n      \"file_not_found\": 10,\n      \"invalid_method\": 3\n    }\n  },\n  \"highest_severity\": {\n    \"error_type\": \"Factory error creating channel.jni:jni\",\n    \"occurrences\": 4,\n    \"description\": \"Indicates a critical issue with the configuration of the JNI channel.\"\n  }\n}\n```",
+    "observations": [],
+    "planning": [],
+    "events": [],
+    "traffic_patterns": [],
+    "highest_severity": null,
+    "requires_immediate_attention": false,
+    "api_error_code_summary": {}
+  }
+}

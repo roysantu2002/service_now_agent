@@ -46,6 +46,16 @@ try:
 except Exception as e:
     logger.error("Error importing Script Creator endpoint", error=str(e))
 
+# ✅ Webhooks Endpoint (moved before inclusion)
+try:
+    # from app.api.v1.endpoints import webhooks
+    from app.api.v1.endpoints import webhooks_eus
+
+    routers.append(("webhooks", webhooks_eus.router))
+    logger.debug("Webhooks endpoint imported successfully")
+except Exception as e:
+    logger.error("Error importing Webhooks endpoint", error=str(e))
+
 # --- Include routers dynamically ---
 for prefix, router in routers:
     api_router.include_router(router, prefix=f"/{prefix}", tags=[prefix])

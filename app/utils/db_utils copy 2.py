@@ -100,13 +100,6 @@ async def execute_query(query: str, *params, return_value: bool = False):
       - For SELECT → returns list[dict]
       - For non-SELECT → executes and returns None
     """
-
-    # ✅ FIX ADDED — ensures tuple or iterator params are handled correctly
-    if len(params) == 1 and isinstance(params[0], (tuple, list)):
-        params = tuple(params[0])
-    elif hasattr(params, "__iter__") and not isinstance(params, (str, bytes, tuple, list)):
-        params = tuple(params)
-
     try:
         async with get_db_connection() as conn:
             sql = query.strip().lower()
@@ -116,9 +109,11 @@ async def execute_query(query: str, *params, return_value: bool = False):
                 return [dict(r) for r in rows]
 
             elif return_value:
+                # Support RETURNING id::text or similar cases
                 row = await conn.fetchrow(query, *params)
                 if not row:
                     return None
+                # Return first column value if it's a single value
                 if len(row.keys()) == 1:
                     return list(row.values())[0]
                 return dict(row)
@@ -134,10 +129,9 @@ async def execute_query(query: str, *params, return_value: bool = False):
         )
         raise
 
-
 # ---------------------------------------------------
 # Fetch Helpers
-# ---------------------------------------------------
+
 async def fetch_one(query: str, *args) -> Optional[dict]:
     async with get_db_connection() as conn:
         row = await conn.fetchrow(query, *args)
@@ -216,6 +210,9 @@ async def get_session(session_id: str) -> Optional[Dict[str, Any]]:
 # Vector / Hybrid Search
 # ---------------------------------------------------
 async def vector_search(embedding: List[float], limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Performs vector similarity search using PostgreSQL function match_chunks().
+    """
     async with db_pool.acquire() as conn:
         embedding_str = "[" + ",".join(map(str, embedding)) + "]"
         rows = await conn.fetch("SELECT * FROM match_chunks($1::vector, $2)", embedding_str, limit)
@@ -239,6 +236,9 @@ async def hybrid_search(
     limit: int = 10,
     text_weight: float = 0.3
 ) -> List[Dict[str, Any]]:
+    """
+    Hybrid search combining vector similarity and text search using hybrid_search().
+    """
     async with db_pool.acquire() as conn:
         embedding_str = "[" + ",".join(map(str, embedding)) + "]"
         rows = await conn.fetch(
@@ -287,6 +287,7 @@ async def upsert_webhook_event(
     incident_data: Optional[Dict[str, Any]] = None,
     status: str = "received"
 ) -> str:
+    """Insert or update webhook event and return its UUID."""
     async with get_db_connection() as conn:
         row = await conn.fetchrow(
             """
@@ -313,8 +314,11 @@ async def upsert_webhook_event(
         )
         return row["id"]
 
+
 async def initialize_tables() -> None:
+    """Initialize webhook and AI incident tables."""
     try:
+        # Webhook Events
         await execute_query("""
             CREATE TABLE IF NOT EXISTS webhook_events (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -339,6 +343,8 @@ async def initialize_tables() -> None:
         await execute_query("""
             CREATE INDEX IF NOT EXISTS idx_webhook_events_status ON webhook_events(status);
         """)
+
+        # Incident Analysis
         await execute_query("""
             CREATE TABLE IF NOT EXISTS incident_analysis (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -360,6 +366,7 @@ async def initialize_tables() -> None:
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
         """)
+
         logger.info("✅ Database tables initialized successfully.")
     except Exception as e:
         logger.error(f"❌ Failed to initialize tables: {e}")
