@@ -75,9 +75,9 @@ export interface DashboardStats {
   averageResolutionTime: number
   userActivity: number
 }
-
 export interface IncidentAnalysis {
   id: string
+  webhook_event_id?: string
   incident_id: string
   sys_id: string
   category?: string
@@ -87,6 +87,11 @@ export interface IncidentAnalysis {
   supporting_evidence?: string
   suggested_priority?: number
   recommended_actions?: string
+  related_incidents?: string
+  metadata?: string // ✅ added
   ai_model_used?: string
+  analysis_level?: string // ✅ added
+  processing_time_ms?: number | null // ✅ added
   created_at?: string
+  updated_at?: string // ✅ added
 }

@@ -26,7 +26,6 @@ from app.utils.db_utils import (
     initialize_database,
     initialize_tables,
     upsert_webhook_event,   # ✅ Added import for upsert support
-    store_incident_analysis, # ensure imported (using module path)
 )
 
 # -------------------------------------------------------
@@ -60,6 +59,42 @@ async def get_servicenow_connector() -> ServiceNowConnector:
     conn = ServiceNowConnector()
     await conn.initialize()
     return conn
+
+# # -------------------------------------------------------
+# # Enum Mapping Fix (for numeric values from ServiceNow)
+# # -------------------------------------------------------
+# def map_servicenow_enums(data: dict) -> dict:
+#     priority_map = {
+#         "1": "critical",
+#         "2": "high",
+#         "3": "medium",
+#         "4": "low",
+#         "5": "planned",
+#     }
+#     level_map = {
+#         "1": "high",
+#         "2": "medium",
+#         "3": "low",
+#     }
+#     state_map = {
+#         "1": "New",
+#         "2": "In Progress",
+#         "3": "On Hold",
+#         "6": "Resolved",
+#         "7": "Closed",
+#         "8": "Canceled",
+#     }
+
+#     for field, mapping in {
+#         "priority": priority_map,
+#         "impact": level_map,
+#         "urgency": level_map,
+#         "state": state_map,
+#     }.items():
+#         if field in data:
+#             data[field] = mapping.get(str(data[field]), data[field])
+
+#     return data
 
 # -------------------------------------------------------
 # Enum & Level Mapping
@@ -115,7 +150,7 @@ def map_servicenow_enums(data: dict) -> dict:
 
     # Derive level (L1/L2/L3) based on impact or urgency
     def derive_level(val: Any) -> str:
-        if str(val) in ["1", "high", "High", "critical", "Critical"]:
+        if str(val) in ["1", "high", "High"]:
             return "L1"
         if str(val) in ["2", "medium", "Medium"]:
             return "L2"
@@ -136,7 +171,7 @@ def map_servicenow_enums(data: dict) -> dict:
         data["state"] = state_map.get(str(data["state"]), "New")
 
     # Add derived level
-    data["level"] = derive_level(data.get("impact") or data.get("urgency") or data.get("priority"))
+    data["level"] = derive_level(data.get("impact"))
 
     return data
 
@@ -197,42 +232,81 @@ async def update_webhook_processing(record_id, status, ai_processed=False, ai_an
         logger.error("Webhook update failed", record_id=record_id, error=str(e))
 
 
-# -------------------------------------------------------
-# Store AI Analysis (uses db_utils.store_incident_analysis under-the-hood)
-# -------------------------------------------------------
-async def store_analysis_record(webhook_event_id, incident_id, sys_id, analysis_result_obj, ai_model_used="unknown"):
-    """
-    Accepts either a dict or ClassificationResult-like object.
-    Ensures correct fields and passes analysis_level to DB.
-    """
-    # Support both dict and dataclass-like objects
-    if hasattr(analysis_result_obj, "category"):
-        # dataclass-like (ClassificationResult)
-        analysis_results = {
-            "category": getattr(analysis_result_obj, "category").value if hasattr(analysis_result_obj, "category") else analysis_result_obj.category,
-            "severity": getattr(analysis_result_obj, "severity").value if hasattr(analysis_result_obj, "severity") else analysis_result_obj.severity,
-            "confidence": getattr(analysis_result_obj, "confidence", None),
-            "reasoning": getattr(analysis_result_obj, "reasoning", None),
-            "supporting_evidence": getattr(analysis_result_obj, "supporting_evidence", []),
-            "suggested_priority": getattr(analysis_result_obj, "suggested_priority", None),
-            "recommended_actions": getattr(analysis_result_obj, "recommended_actions", []),
-            "related_incidents": getattr(analysis_result_obj, "related_incidents", []),
-            "metadata": getattr(analysis_result_obj, "metadata", {}),
-        }
-        analysis_level = getattr(analysis_result_obj, "analysis_level", None)
-    else:
-        analysis_results = analysis_result_obj
-        analysis_level = analysis_results.get("analysis_level")
+# async def store_incident_analysis(webhook_event_id, incident_id, sys_id, analysis_results, ai_model_used="unknown") -> str:
+#     """
+#     Store AI analysis results for an incident.
+#     """
+#     try:
+#         query = """
+#             INSERT INTO incident_analysis 
+#             (webhook_event_id, incident_id, sys_id, category, severity, confidence, reasoning,
+#              supporting_evidence, suggested_priority, recommended_actions, related_incidents,
+#              metadata, ai_model_used, created_at)
+#             VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13, NOW())
+#             RETURNING id::text
+#         """
 
-    # Persist using db_utils helper
-    return await store_incident_analysis(
-        webhook_event_id=webhook_event_id,
-        incident_id=incident_id,
-        sys_id=sys_id,
-        analysis_results=analysis_results,
-        ai_model_used=ai_model_used,
-        analysis_level=analysis_level
-    )
+#         analysis_id = await execute_query(
+#             query,
+#             webhook_event_id,
+#             incident_id,
+#             sys_id,
+#             analysis_results.get("category"),
+#             analysis_results.get("severity"),
+#             analysis_results.get("confidence"),
+#             analysis_results.get("reasoning"),
+#             json.dumps(analysis_results.get("supporting_evidence", {})),
+#             analysis_results.get("suggested_priority"),
+#             json.dumps(analysis_results.get("recommended_actions", [])),
+#             json.dumps(analysis_results.get("related_incidents", [])),
+#             json.dumps(analysis_results.get("metadata", {})),
+#             ai_model_used,
+#             return_value=True
+#         )
+
+#         logger.info("Incident analysis stored", analysis_id=analysis_id, incident_id=incident_id)
+#         return str(analysis_id)
+#     except Exception as e:
+#         logger.error("Analysis storage failed", incident_id=incident_id, sys_id=sys_id, error=str(e))
+#         raise IncidentClassifierError(f"Analysis storage failed: {str(e)}")
+
+# -------------------------------------------------------
+# Store AI Analysis (Fixed parameter passing)
+# -------------------------------------------------------
+async def store_incident_analysis(webhook_event_id, incident_id, sys_id, analysis_results, ai_model_used="unknown") -> str:
+    try:
+        query = """
+            INSERT INTO incident_analysis 
+            (webhook_event_id, incident_id, sys_id, category, severity, confidence, reasoning,
+             supporting_evidence, suggested_priority, recommended_actions, related_incidents,
+             metadata, ai_model_used, created_at)
+            VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13, NOW())
+            RETURNING id::text
+        """
+
+        params = [
+            webhook_event_id,
+            incident_id,
+            sys_id,
+            analysis_results.get("category"),
+            analysis_results.get("severity"),
+            analysis_results.get("confidence"),
+            analysis_results.get("reasoning"),
+            json.dumps(analysis_results.get("supporting_evidence", {})),
+            analysis_results.get("suggested_priority"),
+            json.dumps(analysis_results.get("recommended_actions", [])),
+            json.dumps(analysis_results.get("related_incidents", [])),
+            json.dumps(analysis_results.get("metadata", {})),
+            ai_model_used,
+        ]
+
+        analysis_id = await execute_query(query, *params, return_value=True)
+        logger.info("Incident analysis stored", analysis_id=analysis_id, incident_id=incident_id)
+        return str(analysis_id)
+
+    except Exception as e:
+        logger.error("Analysis storage failed", incident_id=incident_id, sys_id=sys_id, error=str(e))
+        raise IncidentClassifierError(f"Analysis storage failed: {str(e)}")
 
 
 # -------------------------------------------------------
@@ -283,8 +357,6 @@ async def trigger_ai_analysis(
         }
 
         logger.info("Starting AI analysis", sys_id=incident.sys_id, text_preview=text[:100])
-
-        # NOTE: analyze_incident returns a ClassificationResult dataclass instance
         result = await classifier.analyze_incident(text, context)
 
         log_ai_decision(
@@ -296,7 +368,6 @@ async def trigger_ai_analysis(
             tier=result.category.value,
         )
 
-        # Build analysis_results dict from ClassificationResult
         analysis_results = {
             "category": result.category.value,
             "severity": result.severity.value,
@@ -306,8 +377,6 @@ async def trigger_ai_analysis(
             "suggested_priority": result.suggested_priority,
             "recommended_actions": result.recommended_actions,
             "predicted_tier": result.category.value,
-            "metadata": result.metadata,
-            "analysis_level": getattr(result, "analysis_level", None),
         }
 
         if servicenow_integration and incident.sys_id:
@@ -329,6 +398,98 @@ async def trigger_ai_analysis(
         logger.error("AI analysis failed", sys_id=incident.sys_id, error=str(e))
         raise HTTPException(status_code=500, detail=f"AI analysis failed: {e}")
 
+# # -------------------------------------------------------
+# # Webhook Handler
+# # -------------------------------------------------------
+# @router.post("/servicenow/incident-update", response_model=None)
+# async def handle_servicenow_incident_update(
+#     request: Request,
+#     servicenow_integration: ServiceNowConnector = Depends(get_servicenow_connector),
+# ) -> Dict[str, Any]:
+#     webhook_record_id = None
+#     incident_id = sys_id = None
+
+#     try:
+#         payload = await request.json()
+#         timestamp = datetime.utcnow().isoformat()
+
+#         print("\n🚀 === ServiceNow Incident Webhook Received ===")
+#         print(f"🕒 Timestamp: {timestamp}")
+#         print(json.dumps(payload, indent=2, ensure_ascii=False))
+#         print("==============================================\n")
+
+#         incident_data = {}
+#         if "result" in payload:
+#             result = payload.get("result", {})
+#             incident_id = result.get("number")
+#             sys_id = result.get("sys_id")
+#             incident_data = result
+#         else:
+#             incident_id = payload.get("incident_id")
+#             sys_id = payload.get("sys_id")
+#             incident_data = payload.get("incident_data", {})
+
+#         if not sys_id:
+#             raise HTTPException(status_code=400, detail="Missing sys_id in payload")
+
+#         def safe_get(obj, key):
+#             val = obj.get(key)
+#             if isinstance(val, dict):
+#                 return val.get("value")
+#             return val
+
+#         key_info = {
+#             "number": safe_get(incident_data, "number"),
+#             "short_description": safe_get(incident_data, "short_description"),
+#             "priority": safe_get(incident_data, "priority"),
+#             "state": safe_get(incident_data, "state"),
+#             "assignment_group": safe_get(incident_data, "assignment_group"),
+#             "assigned_to": safe_get(incident_data, "assigned_to"),
+#         }
+
+#         print("📋 === Extracted Key Fields ===")
+#         for k, v in key_info.items():
+#             print(f"{k:20}: {v}")
+#         print("==============================================\n")
+
+#         # ✅ Enum mapping fix
+#         incident_data = map_servicenow_enums(incident_data)
+
+#         action_type = payload.get("action_type", "update")
+
+#         # ✅ FIX: Replaced store_webhook_event() with UPSERT
+#         webhook_record_id = await upsert_webhook_event(
+#             incident_id=incident_id,
+#             sys_id=sys_id,
+#             action_type=action_type,
+#             payload=payload,
+#             incident_data=incident_data,
+#             status="received",
+#         )
+
+#         incident_data["sys_id"] = sys_id
+#         incident = ServiceNowIncident(**incident_data)
+
+#         if action_type in ["create", "update", "reopen"]:
+#             await update_webhook_processing(webhook_record_id, "processing")
+#             analysis_results = await trigger_ai_analysis(incident, servicenow_integration)
+#             await store_incident_analysis(webhook_record_id, incident_id, sys_id, analysis_results)
+#             await update_webhook_processing(webhook_record_id, "completed", True, analysis_results)
+#         else:
+#             await update_webhook_processing(webhook_record_id, "skipped", False, error_message=f"Action {action_type} skipped")
+
+#         return {"success": True, "incident_id": incident_id, "sys_id": sys_id}
+
+#     except HTTPException:
+#         if webhook_record_id:
+#             await update_webhook_processing(webhook_record_id, "error", False)
+#         raise
+#     except Exception as e:
+#         logger.error("Webhook processing failed", sys_id=sys_id, error=str(e))
+#         if webhook_record_id:
+#             await update_webhook_processing(webhook_record_id, "error", False, error_message=str(e))
+#         raise HTTPException(status_code=500, detail=f"Webhook error: {e}")
+
 # -------------------------------------------------------
 # Webhook Handler
 # -------------------------------------------------------
@@ -341,9 +502,9 @@ async def handle_servicenow_incident_update(
     incident_id = sys_id = None
     try:
         payload = await request.json()
-        result = payload.get("result", {}) if isinstance(payload, dict) else {}
-        incident_id = result.get("number") or payload.get("incident_id")
-        sys_id = result.get("sys_id") or payload.get("sys_id")
+        result = payload.get("result", {})
+        incident_id = result.get("number")
+        sys_id = result.get("sys_id")
         if not sys_id:
             raise HTTPException(status_code=400, detail="Missing sys_id in payload")
 
@@ -360,9 +521,6 @@ async def handle_servicenow_incident_update(
             status="received",
         )
 
-        # Build model object for classifier (ServiceNowIncident)
-        # ensure sys_id present
-        incident_data["sys_id"] = sys_id
         incident = ServiceNowIncident(**incident_data)
 
         if action_type in ["create", "update", "reopen"]:
@@ -372,27 +530,10 @@ async def handle_servicenow_incident_update(
             )
 
             analysis_results = await trigger_ai_analysis(incident, servicenow_integration)
-
-            # Ensure analysis_level exists (if classifier provided it, use that; else derive)
-            analysis_level = analysis_results.get("analysis_level")
-            if not analysis_level:
-                # derive from severity and suggested_priority
-                sev = analysis_results.get("severity", "medium")
-                pr = analysis_results.get("suggested_priority", 3)
-                if str(sev) in ("critical", "high") or pr in (1, 2):
-                    analysis_level = "L1"
-                elif str(sev) in ("medium",) or pr == 3:
-                    analysis_level = "L2"
-                else:
-                    analysis_level = "L3"
-                analysis_results["analysis_level"] = analysis_level
-
-            # persist analysis (store_incident_analysis writes analysis_level into DB)
-            await store_analysis_record(webhook_record_id, incident_id, sys_id, analysis_results)
-
+            await store_incident_analysis(webhook_record_id, incident_id, sys_id, analysis_results)
             await execute_query(
-                "UPDATE webhook_events SET status='completed', ai_processed=true, ai_analysis_results=$2::jsonb WHERE id=$1::uuid",
-                webhook_record_id, json.dumps(analysis_results)
+                "UPDATE webhook_events SET status='completed', ai_processed=true WHERE id=$1::uuid",
+                webhook_record_id,
             )
         else:
             await execute_query(
@@ -438,7 +579,6 @@ async def webhook_health_check() -> Dict[str, Any]:
         health["status"] = "degraded"
 
     return health
-
 # -------------------------------------------------------
 # Incident Listing Endpoint (Enhanced with AI Sync + Payload)
 # -------------------------------------------------------
@@ -586,7 +726,7 @@ async def list_analysis(
                    category, severity, confidence, reasoning,
                    supporting_evidence, suggested_priority,
                    recommended_actions, related_incidents, metadata,
-                   ai_model_used, analysis_level, processing_time_ms, created_at, updated_at
+                   ai_model_used, processing_time_ms, created_at, updated_at
             FROM incident_analysis
             {where_sql}
             ORDER BY created_at DESC
@@ -638,7 +778,7 @@ async def get_analysis_by_incident(incident_id: str) -> Dict[str, Any]:
                    category, severity, confidence, reasoning,
                    supporting_evidence, suggested_priority,
                    recommended_actions, related_incidents, metadata,
-                   ai_model_used, analysis_level, processing_time_ms, created_at, updated_at
+                   ai_model_used, processing_time_ms, created_at, updated_at
             FROM incident_analysis
             WHERE incident_id = $1
             ORDER BY created_at DESC

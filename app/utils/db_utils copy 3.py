@@ -3,29 +3,25 @@ Database utilities for PostgreSQL connection and operations with asyncpg.
 """
 
 # db_utils.py
-"""
-Database utilities for PostgreSQL connection and operations with asyncpg.
-"""
 
 import os
 import json
 import logging
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 
 import asyncpg
 from asyncpg.pool import Pool
 from dotenv import load_dotenv
 
-# ---------------------------------------------------
-# Setup
-# ---------------------------------------------------
+# Load environment variables
 load_dotenv()
 logger = logging.getLogger(__name__)
 
+
 # ---------------------------------------------------
-# Database Pool Manager
+# Database Pool
 # ---------------------------------------------------
 class DatabasePool:
     """Manages PostgreSQL connection pool."""
@@ -37,30 +33,28 @@ class DatabasePool:
         self.pool: Optional[Pool] = None
     
     async def initialize(self):
-        """Create asyncpg pool if not initialized."""
+        """Create connection pool if not already initialized."""
         if self.pool:
-            print("[DB READY ✅] Connection pool already initialized")
             return
         self.pool = await asyncpg.create_pool(
             self.database_url,
-            min_size=2,
-            max_size=10,
+            min_size=5,
+            max_size=20,
             max_inactive_connection_lifetime=300,
             command_timeout=60
         )
-        print("[DB READY ✅] Connection pool created")
-        logger.info("✅ Database connection pool initialized")
-
+        logger.info("Database connection pool initialized")
+    
     async def close(self):
         """Close the connection pool."""
         if self.pool:
             await self.pool.close()
             self.pool = None
-            logger.info("🛑 Database pool closed")
-
+            logger.info("Database connection pool closed")
+    
     @asynccontextmanager
     async def acquire(self):
-        """Context manager for pooled connection."""
+        """Acquire a connection from the pool."""
         if not self.pool:
             await self.initialize()
         async with self.pool.acquire() as conn:
@@ -72,7 +66,7 @@ db_pool = DatabasePool()
 
 
 # ---------------------------------------------------
-# Lifecycle
+# Lifecycle Management
 # ---------------------------------------------------
 async def initialize_database():
     await db_pool.initialize()
@@ -84,51 +78,60 @@ async def close_database():
 
 @asynccontextmanager
 async def get_db_connection():
-    """Get pooled database connection."""
+    """Context manager for database connections."""
     if not db_pool.pool:
         await db_pool.initialize()
     async with db_pool.acquire() as connection:
-        yield connection
+        try:
+            yield connection
+        except Exception as e:
+            logger.error(f"Database operation failed: {e}")
+            raise
 
 
 # ---------------------------------------------------
-# Query Execution Helper
+# Query Helpers
 # ---------------------------------------------------
 async def execute_query(query: str, *params, return_value: bool = False):
     """
-    Execute any SQL query safely with detailed debug output.
+    Execute a SQL query and optionally return a single value.
+    If `return_value=True`, fetch a single scalar value (for RETURNING clauses).
+    Otherwise:
+      - For SELECT → returns list[dict]
+      - For non-SELECT → executes and returns None
     """
+
+    # ✅ FIX ADDED — ensures tuple or iterator params are handled correctly
     if len(params) == 1 and isinstance(params[0], (tuple, list)):
         params = tuple(params[0])
+    elif hasattr(params, "__iter__") and not isinstance(params, (str, bytes, tuple, list)):
+        params = tuple(params)
 
     try:
-        if not db_pool.pool:
-            raise RuntimeError("❌ Database connection pool not initialized")
+        async with get_db_connection() as conn:
+            sql = query.strip().lower()
 
-        async with db_pool.acquire() as conn:
-            q_clean = query.strip().replace("\n", " ")
-            print(f"\n[DB DEBUG] Executing:\n{q_clean}\nParams: {params}\n")
-
-            if q_clean.lower().startswith("select"):
+            if sql.startswith("select"):
                 rows = await conn.fetch(query, *params)
                 return [dict(r) for r in rows]
 
-            if return_value:
+            elif return_value:
                 row = await conn.fetchrow(query, *params)
                 if not row:
-                    print("⚠️ No rows returned.")
                     return None
-                result = dict(row)
-                if len(result) == 1:
-                    return list(result.values())[0]
-                return result
+                if len(row.keys()) == 1:
+                    return list(row.values())[0]
+                return dict(row)
 
-            result = await conn.execute(query, *params)
-            return result
+            else:
+                await conn.execute(query, *params)
+                return None
 
     except Exception as e:
-        print(f"\n[❌ DB ERROR] {e}\nQUERY:\n{query}\nPARAMS: {params}\n")
-        logger.error(f"❌ DB Query failed: {e}")
+        logger.error(
+            "Database operation failed",
+            extra={"error": str(e), "query": query, "params": params},
+        )
         raise
 
 
@@ -141,10 +144,10 @@ async def fetch_one(query: str, *args) -> Optional[dict]:
         return dict(row) if row else None
 
 
-async def fetch_many(query: str, *args) -> List[dict]:
+async def fetch_many(query: str, *args) -> list[dict]:
     async with get_db_connection() as conn:
         rows = await conn.fetch(query, *args)
-        return [dict(r) for r in rows]
+        return [dict(row) for row in rows]
 
 
 async def fetch_value(query: str, *args):
@@ -156,16 +159,125 @@ async def test_connection() -> bool:
     try:
         async with get_db_connection() as conn:
             await conn.fetchval("SELECT 1")
-        print("[✅] Database connection test passed")
-        logger.info("✅ Database connection test passed")
+        logger.info("Database connection test passed ✅")
         return True
     except Exception as e:
-        logger.error(f"❌ Database connection test failed: {e}")
+        logger.error(f"Database connection test failed: {e}")
         return False
 
 
 # ---------------------------------------------------
-# Webhook Events Table
+# Session Management
+# ---------------------------------------------------
+async def create_session(
+    user_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    timeout_minutes: int = 60
+) -> str:
+    async with db_pool.acquire() as conn:
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=timeout_minutes)
+        row = await conn.fetchrow(
+            """
+            INSERT INTO sessions (user_id, metadata, expires_at)
+            VALUES ($1, $2, $3)
+            RETURNING id::text
+            """,
+            user_id,
+            json.dumps(metadata or {}),
+            expires_at
+        )
+        return row["id"]
+
+
+async def get_session(session_id: str) -> Optional[Dict[str, Any]]:
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id::text, user_id, metadata, created_at, updated_at, expires_at
+            FROM sessions
+            WHERE id = $1::uuid
+              AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
+            """,
+            session_id
+        )
+        if not row:
+            return None
+        return {
+            "id": row["id"],
+            "user_id": row["user_id"],
+            "metadata": json.loads(row["metadata"]),
+            "created_at": row["created_at"].isoformat(),
+            "updated_at": row["updated_at"].isoformat(),
+            "expires_at": row["expires_at"].isoformat() if row["expires_at"] else None
+        }
+
+
+# ---------------------------------------------------
+# Vector / Hybrid Search
+# ---------------------------------------------------
+async def vector_search(embedding: List[float], limit: int = 10) -> List[Dict[str, Any]]:
+    async with db_pool.acquire() as conn:
+        embedding_str = "[" + ",".join(map(str, embedding)) + "]"
+        rows = await conn.fetch("SELECT * FROM match_chunks($1::vector, $2)", embedding_str, limit)
+        return [
+            {
+                "chunk_id": r["chunk_id"],
+                "document_id": r["document_id"],
+                "content": r["content"],
+                "similarity": r["similarity"],
+                "metadata": json.loads(r["metadata"]),
+                "document_title": r["document_title"],
+                "document_source": r["document_source"]
+            }
+            for r in rows
+        ]
+
+
+async def hybrid_search(
+    embedding: List[float],
+    query_text: str,
+    limit: int = 10,
+    text_weight: float = 0.3
+) -> List[Dict[str, Any]]:
+    async with db_pool.acquire() as conn:
+        embedding_str = "[" + ",".join(map(str, embedding)) + "]"
+        rows = await conn.fetch(
+            """
+            SELECT 
+                chunk_id,
+                document_id,
+                content,
+                metadata,
+                document_title,
+                document_source,
+                vector_similarity::double precision,
+                text_similarity::double precision,
+                combined_score::double precision
+            FROM hybrid_search($1::vector, $2, $3, $4)
+            """,
+            embedding_str,
+            query_text,
+            limit,
+            text_weight
+        )
+        return [
+            {
+                "chunk_id": r["chunk_id"],
+                "document_id": r["document_id"],
+                "content": r["content"],
+                "combined_score": r["combined_score"],
+                "vector_similarity": r["vector_similarity"],
+                "text_similarity": r["text_similarity"],
+                "metadata": json.loads(r["metadata"]),
+                "document_title": r["document_title"],
+                "document_source": r["document_source"]
+            }
+            for r in rows
+        ]
+
+
+# ---------------------------------------------------
+# Webhook & Incident Tables
 # ---------------------------------------------------
 async def upsert_webhook_event(
     incident_id: str,
@@ -200,78 +312,73 @@ async def upsert_webhook_event(
             status
         )
         return row["id"]
-
-
-# ---------------------------------------------------
-# Initialize Tables
-# ---------------------------------------------------
 async def initialize_tables() -> None:
     try:
-        async with get_db_connection() as conn:
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS webhook_events (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    incident_id VARCHAR(100) UNIQUE NOT NULL,
-                    sys_id VARCHAR(100) NOT NULL,
-                    action_type VARCHAR(50) NOT NULL,
-                    payload JSONB NOT NULL,
-                    incident_data JSONB,
-                    status VARCHAR(20) DEFAULT 'received',
-                    ai_processed BOOLEAN DEFAULT FALSE,
-                    ai_analysis_results JSONB,
-                    processing_started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                    processing_completed_at TIMESTAMP WITH TIME ZONE,
-                    error_message TEXT,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                );
-            """)
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS incident_analysis (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    webhook_event_id UUID REFERENCES webhook_events(id) ON DELETE CASCADE,
-                    incident_id VARCHAR(100) NOT NULL,
-                    sys_id VARCHAR(100) NOT NULL,
-                    category VARCHAR(100),
-                    severity VARCHAR(50),
-                    confidence DECIMAL(5,4),
-                    reasoning TEXT,
-                    supporting_evidence JSONB,
-                    suggested_priority INTEGER,
-                    recommended_actions JSONB,
-                    related_incidents JSONB,
-                    metadata JSONB,
-                    ai_model_used VARCHAR(100),
-                    analysis_level VARCHAR(10),
-                    processing_time_ms INTEGER,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                );
-            """)
-
-            # Ensure analysis_level column exists
-            await conn.execute("""
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (
-                        SELECT 1 FROM information_schema.columns 
-                        WHERE table_name='incident_analysis' AND column_name='analysis_level'
-                    ) THEN
-                        ALTER TABLE incident_analysis ADD COLUMN analysis_level VARCHAR(10);
-                    END IF;
-                END$$;
-            """)
-        print("[✅] Database tables initialized successfully (analysis_level verified)")
-        logger.info("✅ Database tables initialized successfully")
-
+        await execute_query("""
+            CREATE TABLE IF NOT EXISTS webhook_events (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                incident_id VARCHAR(100) UNIQUE NOT NULL,
+                sys_id VARCHAR(100) NOT NULL,
+                action_type VARCHAR(50) NOT NULL,
+                payload JSONB NOT NULL,
+                incident_data JSONB,
+                status VARCHAR(20) DEFAULT 'received',
+                ai_processed BOOLEAN DEFAULT FALSE,
+                ai_analysis_results JSONB,
+                processing_started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                processing_completed_at TIMESTAMP WITH TIME ZONE,
+                error_message TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        """)
+        await execute_query("""
+            CREATE INDEX IF NOT EXISTS idx_webhook_events_incident_id ON webhook_events(incident_id);
+        """)
+        await execute_query("""
+            CREATE INDEX IF NOT EXISTS idx_webhook_events_status ON webhook_events(status);
+        """)
+        await execute_query("""
+            CREATE TABLE IF NOT EXISTS incident_analysis (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                webhook_event_id UUID REFERENCES webhook_events(id) ON DELETE CASCADE,
+                incident_id VARCHAR(100) NOT NULL,
+                sys_id VARCHAR(100) NOT NULL,
+                category VARCHAR(100),
+                severity VARCHAR(50),
+                confidence DECIMAL(5,4),
+                reasoning TEXT,
+                supporting_evidence JSONB,
+                suggested_priority INTEGER,
+                recommended_actions JSONB,
+                related_incidents JSONB,
+                metadata JSONB,
+                ai_model_used VARCHAR(100),
+                analysis_level VARCHAR(10),  -- ✅ Added new field for L1/L2/L3 classification
+                processing_time_ms INTEGER,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        """)
+        await execute_query("""
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name='incident_analysis' AND column_name='analysis_level'
+                ) THEN
+                    ALTER TABLE incident_analysis ADD COLUMN analysis_level VARCHAR(10);
+                END IF;
+            END$$;
+        """)
+        logger.info("✅ Database tables initialized successfully (analysis_level supported).")
     except Exception as e:
-        print(f"[❌ TABLE INIT ERROR] {e}")
         logger.error(f"❌ Failed to initialize tables: {e}")
         raise
 
 
 # ---------------------------------------------------
-# Incident Analysis Insert / Update
+# Incident Analysis Storage
 # ---------------------------------------------------
 async def store_incident_analysis(
     webhook_event_id: str,
@@ -281,6 +388,11 @@ async def store_incident_analysis(
     ai_model_used: str = "unknown",
     analysis_level: Optional[str] = None
 ) -> str:
+    """
+    Inserts or updates AI analysis record in the `incident_analysis` table.
+    Includes full support for analysis_level (L1/L2/L3) and JSON serialization.
+    """
+
     query = """
         INSERT INTO incident_analysis (
             webhook_event_id,
@@ -321,7 +433,8 @@ async def store_incident_analysis(
         RETURNING id::text;
     """
 
-    params = (
+    # ✅ Convert everything cleanly to plain Python objects (avoid tuple_iterator)
+    params = tuple([
         webhook_event_id,
         incident_id,
         sys_id,
@@ -336,12 +449,30 @@ async def store_incident_analysis(
         json.dumps(analysis_results.get("metadata", {})),
         ai_model_used,
         analysis_level or analysis_results.get("analysis_level", "L3")
-    )
+    ])
 
-    record_id = await execute_query(query, params, return_value=True)
-    logger.info(f"✅ Incident analysis stored for {incident_id} ({analysis_level})")
-    return record_id
+    try:
+        # ✅ FIX: ensure execute_query() gets a tuple (not iterator/generator)
+        record_id = await execute_query(query, params, return_value=True)
 
+        logger.info(
+            "✅ Incident analysis stored successfully",
+            extra={
+                "incident_id": incident_id,
+                "sys_id": sys_id,
+                "analysis_level": analysis_level or analysis_results.get("analysis_level"),
+                "record_id": record_id,
+            },
+        )
+        return record_id
+
+    except Exception as e:
+        logger.error("❌ Failed to store incident analysis", extra={
+            "incident_id": incident_id,
+            "sys_id": sys_id,
+            "error": str(e),
+        }, exc_info=True)
+        raise
 
 # -------------------------
 # Document Chunks
