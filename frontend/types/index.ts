@@ -8,19 +8,25 @@ export interface User {
 }
 
 export interface Incident {
-  sys_id: string
   number: string
-  short_description: string
   description: string
-  state: string
   priority: string
   severity: string
   category: string
   subcategory?: string
   assigned_to?: string
-  created_at: string
-  updated_at: string
   work_notes?: string
+  id?: string
+  sys_id?: string
+  incident_id: string
+  short_description?: string
+  payload?: any
+  state?: string
+  action_type?: string
+  status?: string
+  ai_processed?: boolean
+  created_at?: string
+  updated_at?: string
 }
 
 export interface IncidentProcessRequest {
@@ -68,4 +74,19 @@ export interface DashboardStats {
   criticalIncidents: number
   averageResolutionTime: number
   userActivity: number
+}
+
+export interface IncidentAnalysis {
+  id: string
+  incident_id: string
+  sys_id: string
+  category?: string
+  severity?: string
+  confidence?: string
+  reasoning?: string
+  supporting_evidence?: string
+  suggested_priority?: number
+  recommended_actions?: string
+  ai_model_used?: string
+  created_at?: string
 }
