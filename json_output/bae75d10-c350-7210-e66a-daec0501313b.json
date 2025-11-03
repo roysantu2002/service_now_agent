@@ -2,19 +2,24 @@
   "id": "bae75d10-c350-7210-e66a-daec0501313b",
   "issue": "Network port hung on server XYZ",
   "issue_category": "Network Issue",
-  "description": "The network port on server XYZ has become unresponsive, causing connectivity issues for users.",
+  "category": null,
+  "level": "Unknown",
+  "description": "The network port on server XYZ has become unresponsive, leading to connectivity issues for users relying on this server.",
   "steps_to_resolve": [
     "Step 1: Step 1 - Verify the status of the network port on server XYZ.",
-    "Step 2: Step 2 - Check for any recent changes made to the network configuration.",
-    "Step 3: Step 3 - Review network logs for any errors or warnings related to server XYZ.",
-    "Step 4: Step 4 - Restart the network interface on server XYZ.",
-    "Step 5: Step 5 - Test connectivity to the server after restarting the network interface.",
-    "Step 6: Step 6 - If the issue persists, check the physical connections to the network port.",
-    "Step 7: Step 7 - Replace the network cable if any damage is observed.",
-    "Step 8: Step 8 - If the port is still unresponsive, escalate the issue to the Network Operations team.",
-    "Step 9: Step 9 - Document all findings and actions taken in the incident record.",
-    "Step 10: Step 10 - Monitor the server for any further issues after resolution."
+    "Step 2: Step 2 - Check the physical connections and ensure the cable is properly connected.",
+    "Step 3: Step 3 - Restart the network interface on server XYZ.",
+    "Step 4: Step 4 - Monitor the network interface for any error messages or logs.",
+    "Step 5: Step 5 - Check the switch port configuration for any issues.",
+    "Step 6: Step 6 - Review network traffic logs for anomalies related to server XYZ.",
+    "Step 7: Step 7 - If the issue persists, escalate to the Network Operations team.",
+    "Step 8: Step 8 - Document all findings and actions taken in the incident record.",
+    "Step 9: Step 9 - Notify affected users of the ongoing issue and estimated resolution time.",
+    "Step 10: Step 10 - Once resolved, perform a post-incident review to prevent future occurrences."
   ],
-  "technical_details": "The incident affects server XYZ, which is part of the network infrastructure. Logs indicate potential issues with the network interface card (NIC) and connectivity errors. Configuration settings for the network port were last modified on 2025-09-25.",
-  "complete_description": "The incident involves a network port hung on server XYZ, leading to connectivity issues. Technical analysis shows potential NIC problems and configuration changes prior to the incident. Recommended actions include verifying the port status, reviewing logs, and restarting the network interface to restore connectivity."
+  "technical_details": "The incident pertains to server XYZ, which is experiencing a hung network port. The network operations team will need to investigate the switch configuration and any related logs to identify the root cause. Relevant logs from the server and switch should be collected for analysis.",
+  "complete_description": "The incident involves a hung network port on server XYZ, affecting connectivity. The network operations team is tasked with verifying the port status, checking physical connections, and reviewing configurations. Steps include restarting the network interface, monitoring logs, and escalating if necessary. Documentation of actions and user notifications are crucial for effective resolution.",
+  "analyzed_at": "2025-11-03T05:52:23.941836",
+  "ai_model": null,
+  "confidence_score": null
 }

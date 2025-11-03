@@ -340,6 +340,20 @@ def create_ai_enhanced_incident(
         updated_on=now,
     )
 
+# -------------------------------------------------------
+# Pydantic model for allowed updatable fields
+# -------------------------------------------------------
+class ServiceNowIncidentUpdateRequest(BaseModel):
+    short_description: Optional[str] = Field(None, description="Short summary of the incident")
+    category: Optional[str] = Field(None, description="Incident category (e.g., 'network', 'software', etc.)")
+    assignment_group: Optional[str] = Field(None, description="Group assigned to the incident")
+    assigned_to: Optional[str] = Field(None, description="User assigned to the incident")
+    work_notes: Optional[str] = Field(None, description="Internal notes for technicians")
+    urgency: Optional[str] = Field(None, description="Incident urgency (1=High, 2=Medium, 3=Low)")
+    impact: Optional[str] = Field(None, description="Incident impact (1=High, 2=Medium, 3=Low)")
+
+    class Config:
+        extra = "forbid"
 
 # ---------------------------------------------------------------------
 # TEST USAGE (LOCAL)

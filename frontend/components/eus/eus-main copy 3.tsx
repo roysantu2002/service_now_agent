@@ -16,6 +16,7 @@ export function EUSMain() {
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null)
   const [selectedSysId, setSelectedSysId] = useState<string | null>(null)
+
   const [analysis, setAnalysis] = useState<IncidentAnalysis | null>(null)
 
   const [showAnalysis, setShowAnalysis] = useState(false)
@@ -50,6 +51,7 @@ export function EUSMain() {
       setShowAnalysis(true)
       setAnalysis(null)
       setAnalysisLoading(true)
+
       const res = await incidentService.getWebhookAnalysisByIncidentId(incident.incident_id)
       if (res?.data?.length) setAnalysis(res.data[0])
     } catch (error) {
@@ -65,15 +67,11 @@ export function EUSMain() {
     setShowPayload(true)
   }
 
-  // 🔹 Open ServiceNow “Update Fields” modal
-  const handleOpenUpdate = (incident: Incident) => {
-    if (!incident.sys_id) {
-      console.error('Incident has no sys_id:', incident)
-      return
-    }
-    setSelectedSysId(incident.sys_id)
-    setShowUpdateModal(true)
-  }
+// 🔹 Open ServiceNow “Update Fields” modal
+const handleOpenUpdate = (incident: Incident) => {
+  setSelectedSysId(incident.sys_id ?? null)
+  setShowUpdateModal(true)
+}
 
   // 🔹 Reprocess / trigger webhook again
   const handleReprocessIncident = async (incident: Incident) => {
@@ -154,7 +152,7 @@ export function EUSMain() {
         </CardContent>
       </Card>
 
-      {/* 🔹 Modals */}
+      {/* 🔹 Analysis Modal */}
       {showAnalysis && selectedIncident && (
         <AnalysisModal
           open={showAnalysis}
@@ -169,6 +167,7 @@ export function EUSMain() {
         />
       )}
 
+      {/* 🔹 Payload Modal */}
       {showPayload && selectedIncident && (
         <PayloadModal
           open={showPayload}
@@ -180,6 +179,7 @@ export function EUSMain() {
         />
       )}
 
+      {/* 🔹 Create Incident Modal */}
       {showCreateModal && (
         <CreateIncidentModal
           onClose={() => setShowCreateModal(false)}
@@ -187,6 +187,7 @@ export function EUSMain() {
         />
       )}
 
+      {/* 🔹 Update Fields Modal */}
       {showUpdateModal && selectedSysId && (
         <UpdateIncidentModal
           open={showUpdateModal}

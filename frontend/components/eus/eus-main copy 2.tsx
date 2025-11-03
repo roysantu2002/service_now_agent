@@ -1,3 +1,4 @@
+// components/eus/eus-main.tsx
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -7,82 +8,70 @@ import { DataTable } from '@/components/ui/data-table'
 import { AnalysisModal } from '@/components/eus/analysis-modal'
 import { CreateIncidentModal } from '@/components/eus/create-incident-modal'
 import { PayloadModal } from '@/components/eus/payload-modal'
-import { UpdateIncidentModal } from '@/components/eus/update-incident-modal'
 import { incidentService } from '@/lib/services/incident-service'
-import type { Incident, IncidentAnalysis } from '@/types'
-import { Loader2 } from 'lucide-react'
+import type { Incident, IncidentAnalysis } from '@/types/index'
+import { Loader2 } from 'lucide-react' // ✅ Spinner icon
 
 export function EUSMain() {
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null)
-  const [selectedSysId, setSelectedSysId] = useState<string | null>(null)
   const [analysis, setAnalysis] = useState<IncidentAnalysis | null>(null)
-
   const [showAnalysis, setShowAnalysis] = useState(false)
   const [showPayload, setShowPayload] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [showUpdateModal, setShowUpdateModal] = useState(false)
-
   const [loading, setLoading] = useState(false)
-  const [analysisLoading, setAnalysisLoading] = useState(false)
+  const [analysisLoading, setAnalysisLoading] = useState(false) // ✅ new state
 
   useEffect(() => {
     fetchIncidents()
   }, [])
 
-  // 🔹 Fetch all webhook incidents
+  // 🔹 Fetch list of webhook incidents
   const fetchIncidents = async () => {
     try {
       setLoading(true)
-      const res = await incidentService.listWebhookIncidents({ page: 1, page_size: 10 })
-      setIncidents(res?.data || [])
+      const response = await incidentService.listWebhookIncidents({ page: 1, page_size: 10 })
+      setIncidents(response.data || [])
     } catch (error) {
-      console.error('Error fetching incidents:', error)
+      console.error('Failed to fetch webhook incidents:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  // 🔹 Open analysis modal
+  // 🔹 Open analysis modal for an incident
   const handleOpenAnalysis = async (incident: Incident) => {
     try {
       setSelectedIncident(incident)
       setShowAnalysis(true)
       setAnalysis(null)
-      setAnalysisLoading(true)
+      setAnalysisLoading(true) // ✅ show spinner
+
       const res = await incidentService.getWebhookAnalysisByIncidentId(incident.incident_id)
-      if (res?.data?.length) setAnalysis(res.data[0])
+      if (res?.data?.length) {
+        setAnalysis(res.data[0])
+      }
     } catch (error) {
-      console.error('Error fetching analysis:', error)
+      console.error('Error fetching specific analysis:', error)
     } finally {
-      setAnalysisLoading(false)
+      setAnalysisLoading(false) // ✅ hide spinner
     }
   }
 
-  // 🔹 View payload modal
+  // 🔹 Open raw payload modal
   const handleViewPayload = (incident: Incident) => {
     setSelectedIncident(incident)
     setShowPayload(true)
   }
 
-  // 🔹 Open ServiceNow “Update Fields” modal
-  const handleOpenUpdate = (incident: Incident) => {
-    if (!incident.sys_id) {
-      console.error('Incident has no sys_id:', incident)
-      return
-    }
-    setSelectedSysId(incident.sys_id)
-    setShowUpdateModal(true)
-  }
-
-  // 🔹 Reprocess / trigger webhook again
-  const handleReprocessIncident = async (incident: Incident) => {
+  // 🔹 Trigger update / reprocess for same incident
+  const handleUpdateIncident = async (incident: Incident) => {
     try {
       setLoading(true)
       await incidentService.updateWebhookIncident(incident.incident_id, incident.payload)
       await fetchIncidents()
     } catch (error) {
-      console.error('Error reprocessing incident:', error)
+      console.error('Failed to update incident:', error)
     } finally {
       setLoading(false)
     }
@@ -101,7 +90,7 @@ export function EUSMain() {
     <div className="space-y-6">
       <Card>
         <CardHeader className="flex items-center justify-between">
-          <CardTitle className="text-lg font-semibold">ServiceNow Webhook Incidents</CardTitle>
+          <CardTitle>ServiceNow Webhook Incidents</CardTitle>
           <Button onClick={() => setShowCreateModal(true)}>Create New</Button>
         </CardHeader>
 
@@ -132,18 +121,19 @@ export function EUSMain() {
                 {
                   header: 'Actions',
                   cell: ({ row }) => (
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex gap-2">
                       <Button size="sm" onClick={() => handleOpenAnalysis(row.original)}>
-                        Analysis
+                        View Analysis
                       </Button>
                       <Button size="sm" variant="secondary" onClick={() => handleViewPayload(row.original)}>
-                        Payload
+                        View Payload
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => handleOpenUpdate(row.original)}>
-                        Update Fields
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => handleReprocessIncident(row.original)}>
-                        Reprocess
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleUpdateIncident(row.original)}
+                      >
+                        Update
                       </Button>
                     </div>
                   ),
@@ -154,13 +144,13 @@ export function EUSMain() {
         </CardContent>
       </Card>
 
-      {/* 🔹 Modals */}
+      {/* 🔹 Analysis Modal */}
       {showAnalysis && selectedIncident && (
         <AnalysisModal
           open={showAnalysis}
           incident={selectedIncident}
           analysis={analysis}
-          loading={analysisLoading}
+          loading={analysisLoading} // ✅ pass loading to modal
           onClose={() => {
             setShowAnalysis(false)
             setSelectedIncident(null)
@@ -169,6 +159,7 @@ export function EUSMain() {
         />
       )}
 
+      {/* 🔹 Payload Modal */}
       {showPayload && selectedIncident && (
         <PayloadModal
           open={showPayload}
@@ -180,22 +171,11 @@ export function EUSMain() {
         />
       )}
 
+      {/* 🔹 Create Incident Modal */}
       {showCreateModal && (
         <CreateIncidentModal
           onClose={() => setShowCreateModal(false)}
           onCreated={fetchIncidents}
-        />
-      )}
-
-      {showUpdateModal && selectedSysId && (
-        <UpdateIncidentModal
-          open={showUpdateModal}
-          sysId={selectedSysId}
-          onClose={() => {
-            setShowUpdateModal(false)
-            setSelectedSysId(null)
-          }}
-          onUpdated={fetchIncidents}
         />
       )}
     </div>

@@ -7,7 +7,7 @@ export const services: Service[] = [
     description: 'Unified integration layer for connecting legacy systems, APIs, and AI pipelines.',
     icon: 'ServerStackIcon',
     color: 'from-indigo-500 to-blue-600',
-    endpoint: '/middleware',
+    endpoint: '/incidents',
     enabled: true,
     category: 'integration'
   },

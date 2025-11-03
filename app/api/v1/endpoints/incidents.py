@@ -143,29 +143,79 @@ async def process_incident(
         )
 
 
+router = APIRouter()
+
+def parse_datetime_safe(value):
+    """Gracefully parse ServiceNow datetime strings to datetime objects."""
+    if not value:
+        return datetime.utcnow()
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except Exception:
+        return datetime.utcnow()
+
+
 @router.get("/{sys_id}/summary", response_model=IncidentSummary)
 async def get_incident_summary(
     sys_id: str,
-    provider: Optional[str] = Query(None),
     processor=Depends(get_incident_processor)
-) -> IncidentSummary:
+):
+    """
+    Retrieve a full summary of an incident by sys_id using IncidentProcessor.
+    Includes all available ServiceNow and derived fields.
+    """
     try:
-        summary = await processor.get_incident_summary(sys_id)
-        return summary
+        # Fetch incident from ServiceNow through processor
+        record = await processor.get_incident(sys_id)
+
+        if not record:
+            raise ServiceNowNotFoundError(f"Incident {sys_id} not found")
+
+        # Convert record to dict if it's a Pydantic model
+        if not isinstance(record, dict):
+            record = record.dict() if hasattr(record, "dict") else record.model_dump()
+
+        # Build complete IncidentSummary response
+        data = {
+            "sys_id": record.get("sys_id", sys_id),
+            "number": record.get("number", f"INC-{sys_id[:6]}"),
+            "title": record.get("short_description", "Untitled Incident"),
+            "status": record.get("state", "New"),
+            "priority": record.get("priority", "low"),
+            "urgency": record.get("urgency"),
+            "impact": record.get("impact"),
+            "category": record.get("category"),
+            "subcategory": record.get("subcategory"),
+            "assigned_to": record.get("assigned_to"),
+            "assignment_group": record.get("assignment_group"),
+            "caller_id": record.get("caller_id"),
+            "created": parse_datetime_safe(record.get("sys_created_on")),
+            "updated": parse_datetime_safe(record.get("sys_updated_on")),
+            "resolved_at": parse_datetime_safe(record.get("resolved_at")),
+            "short_description": record.get("short_description"),
+            "description": record.get("description"),
+            "work_notes": record.get("work_notes"),
+            "summary": record.get("summary"),
+            "additional_fields": record,  # include full SNOW record for reference
+        }
+
+        # Return fully validated Pydantic model
+        return IncidentSummary(**data)
+
     except ServiceNowNotFoundError:
         raise HTTPException(status_code=404, detail=f"Incident {sys_id} not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+
 @router.get("/{sys_id}/details")
 async def get_incident_details(
     sys_id: str,
-    provider: Optional[str] = Query(None),
     processor=Depends(get_incident_processor)
 ) -> Dict[str, Any]:
     try:
-        incident_data = await processor.servicenow.get_incident(sys_id)
+        incident_data = await processor.get_incident(sys_id)
         return {"success": True, "sys_id": sys_id, "incident": incident_data.model_dump()}
     except ServiceNowNotFoundError:
         raise HTTPException(status_code=404, detail=f"Incident {sys_id} not found")

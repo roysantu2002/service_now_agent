@@ -1,0 +1,36 @@
+{
+  "categories": [
+    "Software",
+    "Hardware",
+    "Network",
+    "Database",
+    "Security",
+    "Infrastructure"
+  ],
+  "assignment_groups": [
+    "Analytics Settings Managers",
+    "Infra Support",
+    "Network Ops",
+    "App Dev",
+    "Cloud Ops",
+    "Service Desk"
+  ],
+  "assignees": [
+    "Aqib Mushtaq",
+    "John Doe",
+    "Jane Smith",
+    "Support Bot",
+    "Ravi Kumar",
+    "Emma Johnson"
+  ],
+  "urgencies": [
+    "1-High",
+    "2-Medium",
+    "3-Low"
+  ],
+  "impacts": [
+    "1-High",
+    "2-Medium",
+    "3-Low"
+  ]
+}

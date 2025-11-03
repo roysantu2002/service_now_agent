@@ -6,7 +6,7 @@ It handles incident data synchronization, AI analysis triggering, and logging fo
 """
 
 import json
-from fastapi import APIRouter, HTTPException, Request, Depends, Query
+from fastapi import APIRouter, HTTPException, Path, Request, Depends, Query
 from typing import Dict, Any, Optional, List
 import structlog
 from datetime import datetime
@@ -18,7 +18,7 @@ from app.services.incident_classifier import (
     IncidentClassifierError,
     create_incident_classifier,
 )
-from app.models.incident import ServiceNowIncident
+from app.models.incident import ServiceNowIncident, ServiceNowIncidentUpdateRequest
 from app.utils.db_utils import (
     execute_query,
     fetch_many,
@@ -665,3 +665,56 @@ async def get_analysis_by_incident(incident_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error("Analysis fetch by incident failed", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to fetch analysis for {incident_id}: {e}")
+
+# -------------------------------------------------------
+# Endpoint: Update specific incident fields in ServiceNow
+# -------------------------------------------------------
+@router.patch("/servicenow/incident/{sys_id}/update-fields", summary="Update selected fields for a ServiceNow incident")
+async def update_servicenow_incident_fields(
+    sys_id: str = Path(..., description="ServiceNow sys_id of the incident"),
+    fields: ServiceNowIncidentUpdateRequest = ...,
+    servicenow_integration: ServiceNowConnector = Depends(get_servicenow_connector),
+) -> Dict[str, Any]:
+    """
+    Update one or more fields for an existing ServiceNow incident.
+    
+    ✅ Allowed fields:
+    - short_description
+    - category
+    - assignment_group
+    - assigned_to
+    - work_notes
+    - urgency
+    - impact
+    """
+
+    updates = fields.dict(exclude_none=True)
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields provided for update")
+
+    # Allow up to 7 fields (previously limited to 5)
+    if len(updates) > 7:
+        raise HTTPException(status_code=400, detail="Too many fields provided. Maximum allowed is 7.")
+
+    try:
+        logger.info("Updating ServiceNow incident", sys_id=sys_id, updates=updates)
+
+        # Perform update via connector
+        response = await servicenow_integration.update_incident_fields(sys_id=sys_id, updates=updates)
+
+        logger.info("Incident updated successfully", sys_id=sys_id, response=response)
+        return {
+            "success": True,
+            "sys_id": sys_id,
+            "updated_fields": updates,
+            "servicenow_response": response,
+        }
+
+    except ServiceNowError as e:
+        logger.error("ServiceNow update failed", sys_id=sys_id, error=str(e))
+        raise HTTPException(status_code=500, detail=f"ServiceNow update failed: {e}")
+
+    except Exception as e:
+        logger.error("Unexpected error during incident update", sys_id=sys_id, error=str(e))
+        raise HTTPException(status_code=500, detail=f"Error updating incident {sys_id}: {e}")

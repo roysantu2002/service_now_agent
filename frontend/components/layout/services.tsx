@@ -25,17 +25,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { Service } from "@/types";
 const services: Service[] = [
-  {
-    id: "middleware",
-    name: "Middleware Integration",
-    description:
-      "Unified integration layer for connecting legacy systems, APIs, and AI pipelines.",
-    icon: "ServerStackIcon",
-    color: "from-indigo-500 to-blue-600",
-    endpoint: "/api/middleware",
-    enabled: true,
-    category: "integration",
-  },
+  
   {
     id: "log-analyzer",
     name: "Smart Log Analyzer",
@@ -56,7 +46,7 @@ const services: Service[] = [
     color: "from-emerald-500 to-teal-600",
     endpoint: "/api/script-bot",
     enabled: true,
-    category: "automation",
+    category: "operations",
   },
   {
     id: "eus",
@@ -91,17 +81,7 @@ const services: Service[] = [
     enabled: true,
     category: "communication",
   },
-  {
-    id: "rag",
-    name: "RAG Knowledge Engine",
-    description:
-      "Retrieval-Augmented Generation for dynamic document insights and data reasoning.",
-    icon: "DocumentMagnifyingGlassIcon",
-    color: "from-teal-500 to-emerald-600",
-    endpoint: "/api/rag",
-    enabled: true,
-    category: "analysis",
-  },
+
   {
     id: "incident",
     name: "Incident Management",
@@ -109,65 +89,11 @@ const services: Service[] = [
       "AI-powered detection, triage, and resolution integrated with ServiceNow and Jira.",
     icon: "ExclamationTriangleIcon",
     color: "from-red-500 to-pink-600",
-    endpoint: "/api/incidents",
+    endpoint: "/incidents",
     enabled: true,
     category: "management",
-  },
-  {
-    id: "monitoring",
-    name: "Monitoring & Observability",
-    description:
-      "Unified monitoring dashboards with anomaly detection and real-time metrics.",
-    icon: "ChartBarIcon",
-    color: "from-purple-500 to-violet-600",
-    endpoint: "/api/monitoring",
-    enabled: true,
-    category: "analytics",
-  },
-  {
-    id: "ml-insights",
-    name: "ML Insights",
-    description:
-      "Machine learning models for predictive maintenance, risk scoring, and forecasting.",
-    icon: "CpuChipIcon",
-    color: "from-orange-500 to-amber-600",
-    endpoint: "/api/ml",
-    enabled: false,
-    category: "analysis",
-  },
-  {
-    id: "compliance",
-    name: "Compliance & Governance",
-    description:
-      "Automated compliance validation and audit readiness with regulatory frameworks.",
-    icon: "ShieldCheckIcon",
-    color: "from-gray-600 to-slate-700",
-    endpoint: "/api/compliance",
-    enabled: false,
-    category: "governance",
-  },
-  {
-    id: "knowledgebase",
-    name: "Knowledge Base Automation",
-    description:
-      "Auto-curated enterprise knowledge repository powered by LLM summarization.",
-    icon: "DocumentTextIcon",
-    color: "from-cyan-500 to-sky-600",
-    endpoint: "/api/knowledge",
-    enabled: true,
-    category: "documentation",
-  },
-  {
-    id: "integration-hub",
-    name: "Integration Hub",
-    description:
-      "Central hub for workflow orchestration, API federation, and AI service mesh.",
-    icon: "Cog6ToothIcon",
-    color: "from-lime-500 to-green-600",
-    endpoint: "/api/integration",
-    enabled: true,
-    category: "integration",
-  },
+  }
+
 ];
 
 

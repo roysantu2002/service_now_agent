@@ -14,7 +14,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, ListFlowable, ListItem
 from reportlab.lib.styles import getSampleStyleSheet
 
-from app.models.incident import IncidentAnalysisModel
+from app.models.incident import IncidentAnalysisModel, IncidentSummary
 from app.abstracts.compliance import ComplianceLevel
 from app.exceptions.servicenow import ServiceNowNotFoundError
 from app.services.generic_ai_connector import AIConnectorFactory
@@ -57,6 +57,46 @@ class IncidentProcessor:
             self._initialized = True
             logger.info("Incident processor initialized")
 
+    async def get_incident(self, sys_id: str) -> IncidentSummary:
+        record = await self.servicenow.get_incident(sys_id)
+
+        # Convert Pydantic model or object to dict
+        if not isinstance(record, dict):
+            record = record.model_dump() if hasattr(record, "model_dump") else record.__dict__
+
+        return IncidentSummary(
+            sys_id=record.get("sys_id", ""),
+            number=record.get("number") or f"INC-{sys_id[:6]}",
+            title=record.get("short_description") or "Untitled Incident",
+            status=record.get("state") or "New",
+            priority=record.get("priority") or "low",
+            urgency=record.get("urgency"),
+            impact=record.get("impact"),
+            category=record.get("category"),
+            subcategory=record.get("subcategory"),
+            assigned_to=record.get("assigned_to"),
+            assignment_group=record.get("assignment_group"),
+            caller_id=record.get("caller_id"),
+            created=self._parse_datetime(record.get("sys_created_on")),
+            updated=self._parse_datetime(record.get("sys_updated_on")),
+            resolved_at=self._parse_datetime(record.get("resolved_at")),
+            short_description=record.get("short_description"),
+            description=record.get("description"),
+            work_notes=record.get("work_notes"),
+            summary=record.get("summary"),
+            additional_fields=record,
+        )
+
+
+    def _parse_datetime(self, value):
+        """Gracefully parse or fallback for datetime."""
+        if not value:
+            return datetime.utcnow()
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except Exception:
+            return datetime.utcnow()
+        
     # -------------------------------------------------------------------
     def _build_ai_prompt(self, incident_data: Dict[str, Any], analysis_type: str) -> str:
         incident_json = json.dumps(incident_data, indent=2, default=str)

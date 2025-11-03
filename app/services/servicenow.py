@@ -312,3 +312,63 @@ class ServiceNowConnector(BaseServiceNowConnector):
         except Exception as e:
             logger.error("Error adding AI prediction", sys_id=sys_id, error=str(e))
             return ServiceNowResponse(success=False, error=str(e), status_code=500, response_time=0.0)
+        
+    async def update_incident_fields(self, sys_id: str, **fields: Any) -> ServiceNowResponse:
+            """
+            Generic helper to update up to 5 fields on a ServiceNow incident.
+            
+            Example:
+                await connector.update_incident_fields(
+                    sys_id="abcd1234",
+                    short_description="New issue summary",
+                    category="network",
+                    assignment_group="Network Support",
+                    assigned_to="john.doe",
+                    work_notes="Initial triage started"
+                )
+            """
+            if not self.client:
+                await self.initialize()
+
+            # Limit to 5 fields to avoid overloading
+            if len(fields) == 0:
+                raise ServiceNowError("No fields provided for update.")
+            if len(fields) > 5:
+                raise ServiceNowError("Too many fields provided. Maximum allowed is 5.")
+
+            try:
+                url = f"{self.base_url}/api/now/table/incident/{sys_id}"
+                start_time = datetime.utcnow()
+
+                response = await self.client.patch(url, json=fields)
+                elapsed = (datetime.utcnow() - start_time).total_seconds()
+
+                if response.status_code == 200:
+                    logger.info(
+                        "Incident fields updated successfully",
+                        sys_id=sys_id,
+                        fields=list(fields.keys())
+                    )
+                    return ServiceNowResponse(
+                        success=True,
+                        data=response.json(),
+                        status_code=200,
+                        response_time=elapsed
+                    )
+                else:
+                    logger.error(
+                        "Failed to update incident fields",
+                        sys_id=sys_id,
+                        status_code=response.status_code,
+                        response_text=response.text
+                    )
+                    return ServiceNowResponse(
+                        success=False,
+                        error=response.text,
+                        status_code=response.status_code,
+                        response_time=elapsed
+                    )
+
+            except Exception as e:
+                logger.error("Error updating incident fields", sys_id=sys_id, error=str(e))
+                return ServiceNowResponse(success=False, error=str(e), status_code=500, response_time=0.0)
