@@ -7,6 +7,7 @@ and knowledge base integration. It follows factory patterns and async programmin
 
 import logging
 import json
+import os
 import traceback
 from typing import Dict, List, Optional, Union, Any
 from datetime import datetime
@@ -613,7 +614,12 @@ class IncidentClassifierService:
 
 # Factory
 def create_incident_classifier(provider_name: Optional[str] = None, kb_path: Optional[str] = None) -> IncidentClassifierService:
-    kb_loader = KBLoader(kb_path)
+    
+    # Resolve absolute path
+    abs_path = os.path.abspath(kb_path) if kb_path else None
+    print(f"[KB] Absolute path: {abs_path}")
+
+    kb_loader = KBLoader(abs_path)
     return IncidentClassifierService(provider_name=provider_name, kb_loader=kb_loader)
 
 

@@ -95,3 +95,27 @@ export interface IncidentAnalysis {
   created_at?: string
   updated_at?: string // ✅ added
 }
+export interface AnalysisResult {
+  success: boolean;
+  sys_id: string;
+  analysis_type: string;
+  ai_model: string;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  };
+  data: {
+    id: string;
+    issue: string;
+    issue_category: string;
+    description: string;
+    steps_to_resolve: string[];
+    technical_details: string;
+    complete_description: string;
+  };
+  pdf_path: string;
+  raw_ai_output_path: string;
+  parsing_error: string | null;
+  validation_error: string | null;
+}

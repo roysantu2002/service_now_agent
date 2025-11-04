@@ -23,6 +23,7 @@ import { IncidentAnalysis } from './incident-analysis'
 import { IncidentReview } from './incident-review'
 import { IncidentRemediation } from './incident-remediation'
 import { IncidentManager } from './incident-manager'
+import { AnalysisHistory } from './analysis-history'
 
 type ServiceView =
   | 'main'
@@ -31,6 +32,7 @@ type ServiceView =
   | 'review'
   | 'remediation'
   | 'list'
+  | 'analysis_history'
 
 interface ServiceOption {
   id: ServiceView
@@ -81,6 +83,14 @@ const serviceOptions: ServiceOption[] = [
     icon: ClipboardDocumentListIcon,
     color: 'text-gray-600',
     bgColor: 'bg-gray-50 hover:bg-gray-100 dark:bg-gray-900/20 dark:hover:bg-gray-900/30'
+  },
+  {
+    id: 'analysis_history',
+    title: 'Previous Analysis',
+    description: 'Browse previously generated incident analysis',
+    icon: ExclamationTriangleIcon,
+    color: 'text-red-600',
+    bgColor: 'bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30'
   }
 ]
 
@@ -101,6 +111,8 @@ export function IncidentServiceMain() {
       return <IncidentRemediation onBack={handleBackToMain} />
     case 'list':
       return <IncidentManager />
+    case 'analysis_history':
+      return <AnalysisHistory onBack={handleBackToMain} />
   }
 
   // --- Main services grid ---

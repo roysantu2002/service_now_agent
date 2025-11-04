@@ -6,7 +6,8 @@ import {
   IncidentProcessRequest,
   IncidentProcessResponse,
   IncidentSummary,
-} from '@/types'
+  AnalysisResult, // ✅ add this import
+} from '@/types/index'
 
 export const incidentService = {
   // ----------------------------------------
@@ -66,7 +67,7 @@ export const incidentService = {
     sysId: string,
     analysisType: string = 'general',
     provider?: string
-  ): Promise<IncidentAnalysis> {
+  ): Promise<AnalysisResult> { // ✅ CHANGED HERE ONLY
     const params = { provider, analysis_type: analysisType }
     const response = await apiClient.post(`/api/v1/incidents/${sysId}/analyze`, {}, { params })
     return response.data
@@ -254,4 +255,18 @@ export const incidentService = {
       throw new Error(error.message || 'Failed to update incident')
     }
   },
+  /**
+   * Download a generated file (pdf/json/md/raw).
+   * filePath: the absolute path returned by the analyze endpoint (must be url-encoded by axios).
+   * Returns: response.data (Blob)
+   */
+  async downloadGeneratedFile(filePath: string) {
+    // Use the same router prefix as analyze; adjust if your backend mount differs
+    const response = await apiClient.get('/api/v1/incidents/download/pdf', {
+      params: { file_path: filePath },
+      responseType: 'blob', // IMPORTANT: get binary
+    });
+    return response.data; // Blob
+  },
 }
+

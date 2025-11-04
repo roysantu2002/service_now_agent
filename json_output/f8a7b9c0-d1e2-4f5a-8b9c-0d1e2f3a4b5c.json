@@ -1,0 +1,25 @@
+{
+  "id": "f8a7b9c0-d1e2-4f5a-8b9c-0d1e2f3a4b5c",
+  "issue": "Email Client Software Functionality Issue",
+  "issue_category": "Software Bug",
+  "category": null,
+  "level": "Unknown",
+  "description": "The user, identified as USER_0042, is experiencing an unspecified issue with their email client software. The incident record (INC0010002) lacks a detailed description, with the 'short_description' field containing only the system ID. The problem is categorized under 'software' with a subcategory of 'email', indicating a client-side or application-level issue related to email functionality. Further investigation is required to determine the exact nature of the malfunction, such as inability to send/receive, application crashes, or configuration errors.",
+  "steps_to_resolve": [
+    "Step 1: Verify incident details and confirm affected services.",
+    "Step 2: Check server/network logs for errors.",
+    "Step 3: Review recent changes or deployments.",
+    "Step 4: Attempt to reproduce in test environment.",
+    "Step 5: Check hardware and connectivity.",
+    "Step 6: Run diagnostics (ping, traceroute, netstat).",
+    "Step 7: Validate firewall and routing policies.",
+    "Step 8: Apply safe temporary mitigation.",
+    "Step 9: Update stakeholders and plan next steps.",
+    "Step 10: Perform root cause analysis and prevention plan."
+  ],
+  "technical_details": "Affected CI: unknown | Group: 019ad92ec7230010393d265c95c260dd",
+  "complete_description": "",
+  "analyzed_at": "2025-11-04T13:41:30.386867",
+  "ai_model": null,
+  "confidence_score": null
+}

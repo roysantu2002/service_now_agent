@@ -391,3 +391,5 @@ if __name__ == "__main__":
     )
 
     print("AI Analysis:", analysis.model_dump_json(indent=2))
+
+

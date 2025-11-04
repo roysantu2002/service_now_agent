@@ -1,11 +1,12 @@
 """Incident processing endpoints with lazy dependency injection to avoid circular imports."""
 
+import os
 from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Dict, Any, Optional
 import structlog
 from datetime import datetime
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.models.incident import (
     IncidentProcessRequest,
@@ -13,6 +14,7 @@ from app.models.incident import (
     IncidentSummary
 )
 from app.exceptions.servicenow import ServiceNowError, ServiceNowNotFoundError
+from app.utils.db_utils import fetch_incident_resolutions, store_incident_resolution
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
@@ -225,6 +227,23 @@ async def get_incident_details(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# @router.post("/{sys_id}/analyze")
+# async def analyze_incident(
+#     sys_id: str,
+#     analysis_type: str = "general",
+#     provider: Optional[str] = Query(None),
+#     processor=Depends(get_incident_processor)
+# ):
+#     try:
+#         analysis = await processor.analyze_incident_only(sys_id, analysis_type)
+#         safe_response = jsonable_encoder(analysis)
+#         return JSONResponse(content=safe_response)
+#     except ServiceNowNotFoundError:
+#         raise HTTPException(status_code=404, detail=f"Incident {sys_id} not found")
+#     except Exception as e:
+#         logger.error("Exception during /analyze", sys_id=sys_id, error=str(e))
+#         raise HTTPException(status_code=500, detail=str(e))
+    
 @router.post("/{sys_id}/analyze")
 async def analyze_incident(
     sys_id: str,
@@ -233,16 +252,50 @@ async def analyze_incident(
     processor=Depends(get_incident_processor)
 ):
     try:
+        # 1) Run analysis
         analysis = await processor.analyze_incident_only(sys_id, analysis_type)
+
+        # 2) Convert models to JSON-safe primitives
         safe_response = jsonable_encoder(analysis)
+
+        # 3) Persist into incident_resolution BEFORE returning
+        try:
+            record_id = await store_incident_resolution(safe_response)
+            safe_response["_stored_resolution_id"] = record_id
+        except Exception as e:
+            logger.error(f"Failed to store incident resolution for sys_id={sys_id}: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to store analysis: {e}")
+
+        # 4) Return response
         return JSONResponse(content=safe_response)
+
     except ServiceNowNotFoundError:
         raise HTTPException(status_code=404, detail=f"Incident {sys_id} not found")
     except Exception as e:
         logger.error("Exception during /analyze", sys_id=sys_id, error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
-
+@router.get("/resolution/analysis")
+async def get_resolution_analysis(limit: int = 100, offset: int = 0, sys_id: Optional[str] = None):
+    try:
+        data = await fetch_incident_resolutions(limit, offset, sys_id)
+        return JSONResponse(content=jsonable_encoder(data))
+    except Exception as e:
+        logger.error(f"Failed to fetch incident resolution: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch analysis data")
+    
+@router.get("/download/pdf")
+async def download_pdf(file_path: str):
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    filename = os.path.basename(file_path)
+    return FileResponse(
+        path=file_path,
+        filename=filename,
+        media_type="application/pdf"
+    )
+    
 @router.post("/{sys_id}/compliance-filter")
 async def filter_incident_data(
     sys_id: str,

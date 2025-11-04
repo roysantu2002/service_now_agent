@@ -270,7 +270,7 @@ async def trigger_ai_analysis(
     servicenow_integration: Optional[ServiceNowConnector] = None
 ) -> Dict[str, Any]:
     try:
-        classifier = create_incident_classifier()
+        classifier = create_incident_classifier(provider_name='Gemini', kb_path='knowledge_base.json')
         text = incident.short_description or incident.description or "No description provided"
         context = {
             "environment": "production",

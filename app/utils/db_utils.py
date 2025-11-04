@@ -10,6 +10,7 @@ Database utilities for PostgreSQL connection and operations with asyncpg.
 import os
 import json
 import logging
+from turtle import get_poly
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -23,6 +24,36 @@ from dotenv import load_dotenv
 # ---------------------------------------------------
 load_dotenv()
 logger = logging.getLogger(__name__)
+
+SQL_DIR = os.path.join(os.path.dirname(__file__), "sql")
+
+print(f"[DB UTIL] SQL Directory: {SQL_DIR}")
+
+def parse_dt(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        # Strip Z if included
+        return datetime.fromisoformat(value.replace("Z", ""))
+    except:
+        return None
+    
+async def _execute_sql_file(path: str) -> None:
+    if not os.path.exists(path):
+        logger.warning(f"SQL file not found: {path}")
+        return
+
+    with open(path, "r", encoding="utf-8") as f:
+        sql = f.read()
+
+    try:
+        await execute_query(sql)
+        logger.info(f"Executed SQL file: {path}")
+    except Exception as e:
+        logger.error(f"Failed to execute sql file {path}: {e}")
+        raise
 
 # ---------------------------------------------------
 # Database Pool Manager
@@ -201,13 +232,19 @@ async def upsert_webhook_event(
         )
         return row["id"]
 
-
 # ---------------------------------------------------
 # Initialize Tables
 # ---------------------------------------------------
 async def initialize_tables() -> None:
     try:
         async with get_db_connection() as conn:
+
+            # Drop and recreate incident_analysis table with UNIQUE(sys_id)
+            await conn.execute("""
+                DROP TABLE IF EXISTS incident_analysis CASCADE;
+            """)
+
+            # Ensure webhook_events exists first (because of FK)
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS webhook_events (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -226,12 +263,14 @@ async def initialize_tables() -> None:
                     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 );
             """)
+
+            # Recreate incident_analysis properly
             await conn.execute("""
-                CREATE TABLE IF NOT EXISTS incident_analysis (
+                CREATE TABLE incident_analysis (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     webhook_event_id UUID REFERENCES webhook_events(id) ON DELETE CASCADE,
                     incident_id VARCHAR(100) NOT NULL,
-                    sys_id VARCHAR(100) NOT NULL,
+                    sys_id VARCHAR(100) NOT NULL UNIQUE,
                     category VARCHAR(100),
                     severity VARCHAR(50),
                     confidence DECIMAL(5,4),
@@ -249,26 +288,29 @@ async def initialize_tables() -> None:
                 );
             """)
 
-            # Ensure analysis_level column exists
+            # (Optional) add index for faster retrieval
             await conn.execute("""
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (
-                        SELECT 1 FROM information_schema.columns 
-                        WHERE table_name='incident_analysis' AND column_name='analysis_level'
-                    ) THEN
-                        ALTER TABLE incident_analysis ADD COLUMN analysis_level VARCHAR(10);
-                    END IF;
-                END$$;
+                CREATE INDEX IF NOT EXISTS idx_incident_analysis_sys_id
+                ON incident_analysis(sys_id);
             """)
-        print("[✅] Database tables initialized successfully (analysis_level verified)")
-        logger.info("✅ Database tables initialized successfully")
+
+        print("[✅] Database tables dropped and recreated successfully")
+        logger.info("✅ Database tables dropped and recreated successfully")
+        
+         # Execute files (deterministic order)
+        sql_files = [
+            os.path.join(SQL_DIR, f) for f in sorted(os.listdir(SQL_DIR))
+            if f.endswith(".sql")
+        ]
+        for fp in sql_files:
+            await _execute_sql_file(fp)
+
+        logger.info(f"✅ Database tables verified/created from SQL directory: {SQL_DIR}")
 
     except Exception as e:
         print(f"[❌ TABLE INIT ERROR] {e}")
         logger.error(f"❌ Failed to initialize tables: {e}")
         raise
-
 
 # ---------------------------------------------------
 # Incident Analysis Insert / Update
@@ -506,3 +548,165 @@ async def hybrid_search(
             for r in rows
         ]
 
+
+# add somewhere in app/utils/db_utils.py (near other store helpers)
+
+async def store_incident_resolution(
+    payload: Dict[str, Any]
+) -> str:
+    """
+    Persist analysis payload into incident_resolution table.
+    - webhook_event_id may be None (we still store)
+    - payload is the exact JSON structure returned from analyze_incident_only
+    Returns: inserted/updated record id (text)
+    """
+    # Normalize top-level fields and nested `data`
+    data = payload.get("data") or {}
+    # data.id may be a UUID-like string; keep as text
+    query = """
+        INSERT INTO incident_resolution (
+            success,
+            sys_id,
+            analysis_type,
+            ai_model,
+            usage,
+            data_id,
+            issue,
+            issue_category,
+            category,
+            level,
+            description,
+            steps_to_resolve,
+            technical_details,
+            complete_description,
+            analyzed_at,
+            confidence_score,
+            pdf_path,
+            json_path,
+            md_path,
+            raw_ai_output_path,
+            parsing_error,
+            validation_error,
+            metadata,
+            created_at
+        )
+        VALUES (
+            $1, $2, $3, $4, $5,
+            $6, $7, $8, $9, $10,
+            $11, $12::jsonb, $13, $14, $15, $16,
+            $17, $18, $19, $20,
+            $21, $22, $23::jsonb, NOW()
+        )
+        ON CONFLICT (sys_id)
+        DO UPDATE SET
+            success = EXCLUDED.success,
+            analysis_type = EXCLUDED.analysis_type,
+            ai_model = EXCLUDED.ai_model,
+            usage = EXCLUDED.usage,
+            data_id = EXCLUDED.data_id,
+            issue = EXCLUDED.issue,
+            issue_category = EXCLUDED.issue_category,
+            category = EXCLUDED.category,
+            level = EXCLUDED.level,
+            description = EXCLUDED.description,
+            steps_to_resolve = EXCLUDED.steps_to_resolve,
+            technical_details = EXCLUDED.technical_details,
+            complete_description = EXCLUDED.complete_description,
+            analyzed_at = EXCLUDED.analyzed_at,
+            confidence_score = EXCLUDED.confidence_score,
+            pdf_path = EXCLUDED.pdf_path,
+            json_path = EXCLUDED.json_path,
+            md_path = EXCLUDED.md_path,
+            raw_ai_output_path = EXCLUDED.raw_ai_output_path,
+            parsing_error = EXCLUDED.parsing_error,
+            validation_error = EXCLUDED.validation_error,
+            metadata = EXCLUDED.metadata,
+            updated_at = NOW()
+        RETURNING id::text;
+    """
+
+    params = (
+        bool(payload.get("success", False)),
+        payload.get("sys_id"),
+        payload.get("analysis_type"),
+        payload.get("ai_model"),
+        json.dumps(payload.get("usage")) if payload.get("usage") is not None else None,
+        data.get("id"),
+        data.get("issue"),
+        data.get("issue_category"),
+        data.get("category"),
+        data.get("level"),
+        data.get("description"),
+        json.dumps(data.get("steps_to_resolve", [])),
+        data.get("technical_details"),
+        data.get("complete_description"),
+        # analyzed_at could be string; pass as-is (Postgres TIMESTAMPTZ accepts ISO)
+        parse_dt(data.get("analyzed_at")),
+        # confidence_score may be null; cast to float or None
+        (float(data.get("confidence_score")) if data.get("confidence_score") is not None else None),
+        payload.get("pdf_path"),
+        payload.get("json_path"),
+        payload.get("md_path"),
+        payload.get("raw_ai_output_path"),
+        payload.get("parsing_error"),
+        payload.get("validation_error"),
+        json.dumps(payload.get("data") or {}),
+    )
+
+    # Execute and return the id
+    record_id = await execute_query(query, params, return_value=True)
+    logger.info(f"✅ Incident resolution stored for sys_id={payload.get('sys_id')}, record_id={record_id}")
+    return record_id
+
+
+async def fetch_incident_resolutions(
+    limit: int = 100,
+    offset: int = 0,
+    sys_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    where_clause = ""
+    params = []
+
+    if sys_id:
+        where_clause = "WHERE sys_id = $3"
+        params = [limit, offset, sys_id]
+    else:
+        params = [limit, offset]
+
+    query = f"""
+        SELECT 
+            id,
+            success,
+            sys_id,
+            analysis_type,
+            ai_model,
+            usage,
+            data_id,
+            issue,
+            issue_category,
+            category,
+            level,
+            description,
+            steps_to_resolve,
+            technical_details,
+            complete_description,
+            analyzed_at,
+            confidence_score,
+            pdf_path,
+            json_path,
+            md_path,
+            raw_ai_output_path,
+            parsing_error,
+            validation_error,
+            created_at,
+            updated_at,
+            metadata
+        FROM incident_resolution
+        {where_clause}
+        ORDER BY created_at DESC
+        LIMIT $1 OFFSET $2
+    """
+
+    async with get_db_connection() as conn:
+        records = await conn.fetch(query, *params)
+        return [dict(r) for r in records]

@@ -32,7 +32,16 @@ ISSUE_CATEGORIES = {
     "other": "Other"
 }
 
-
+def parse_dt(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(value.replace("Z", ""))
+    except:
+        return None
+    
 class IncidentProcessor:
     """Orchestration service for ServiceNow incident processing."""
 
@@ -97,6 +106,11 @@ class IncidentProcessor:
         except Exception:
             return datetime.utcnow()
         
+     # -------------------------------------------------------------------
+    def _normalize_step_label(self, step: str) -> str:
+        """Strip any leading numbering or 'Step X -' prefixes."""
+        import re
+        return re.sub(r'^(step\s*)?\d+\s*[:.)-]*\s*', '', step, flags=re.IGNORECASE).strip()
     # -------------------------------------------------------------------
     def _build_ai_prompt(self, incident_data: Dict[str, Any], analysis_type: str) -> str:
         incident_json = json.dumps(incident_data, indent=2, default=str)
@@ -186,7 +200,7 @@ Rules:
                 parsed[field] = m.group(1) if m else None
 
         if "steps_to_resolve" in parsed:
-            parsed["steps_to_resolve"] = [s.lstrip("0123456789. -") for s in parsed["steps_to_resolve"]]
+            parsed["steps_to_resolve"] = [self._normalize_step_label(s) for s in parsed["steps_to_resolve"]]
         return parsed
 
     # -------------------------------------------------------------------
@@ -206,13 +220,13 @@ Rules:
         ]
         if not steps or not isinstance(steps, list):
             steps = []
-        cleaned_steps = [s.lstrip("0123456789. -") for s in steps]
+        cleaned_steps = [self._normalize_step_label(s) for s in steps]
         for step in default_steps:
             if len(cleaned_steps) >= 10:
                 break
             if step not in cleaned_steps:
                 cleaned_steps.append(step)
-        return [f"Step {i+1}: {s}" for i, s in enumerate(cleaned_steps[:10])]
+        return cleaned_steps[:10]
 
     # -------------------------------------------------------------------
     async def _generate_incident_pdf(self, analysis: IncidentAnalysisModel) -> str:
@@ -231,7 +245,7 @@ Rules:
                 Paragraph("<b>Steps to Resolve:</b>", styles["Heading3"]),
                 ListFlowable(
                     [ListItem(Paragraph(str(s), styles["Normal"])) for s in analysis.steps_to_resolve],
-                    bulletType="1"
+                    bulletType="bullet"
                 ),
                 Spacer(1, 12),
                 Paragraph("<b>Technical Details:</b>", styles["Heading3"]),

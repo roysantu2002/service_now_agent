@@ -22,7 +22,6 @@ import {
   CpuChipIcon,
 } from "@heroicons/react/24/outline";
 import { incidentService } from "@/lib/services/incident-service";
-import { apiClient } from "@/lib/api-client"; // <-- ADDED: use apiClient for downloads
 import toast from "react-hot-toast";
 
 interface AnalysisResult {
@@ -60,9 +59,6 @@ export function IncidentAnalysis({ onBack }: IncidentAnalysisProps) {
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(
     null
   );
-    // inside component top-level state (add this near other useState calls)
-  const [downloading, setDownloading] = useState(false);
-  const [downloadingFile, setDownloadingFile] = useState<string | null>(null);
 
   const analysisMutation = useMutation<AnalysisResult, any, string>({
     mutationFn: (sys_id: string) =>
@@ -89,50 +85,6 @@ export function IncidentAnalysis({ onBack }: IncidentAnalysisProps) {
     setSysId("");
     setAnalysisResult(null);
     analysisMutation.reset();
-  };
-
-  // <-- ADDED: download handler using apiClient (keeps auth/interceptors from apiClient)
-  // handler (paste into component)
-  const handleDownload = async (filePath: string) => {
-    if (!filePath) {
-      toast.error("No file path available");
-      return;
-    }
-
-    try {
-      setDownloading(true);
-      setDownloadingFile(filePath);
-
-      // call service which uses apiClient and responseType: 'blob'
-      const blobData = await incidentService.downloadGeneratedFile(filePath);
-
-      // Ensure we have a Blob (axios returns Blob in response.data)
-      const blob = blobData instanceof Blob ? blobData : new Blob([blobData]);
-
-      // derive a friendly file name from the full path (last segment)
-      const rawName = filePath.split("/").pop() || "download";
-      // Optional: prefer system-friendly filename; remove spaces
-      const filename = rawName;
-
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      // set download attribute so browser uses suggested filename
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-
-      toast.success(`Download started: ${filename}`);
-    } catch (err: any) {
-      console.error("Download failed", err);
-      // if server returned JSON error inside blob, try to decode (optional)
-      toast.error(err?.response?.data?.message || "Download failed");
-    } finally {
-      setDownloading(false);
-      setDownloadingFile(null);
-    }
   };
 
   return (
@@ -412,7 +364,6 @@ export function IncidentAnalysis({ onBack }: IncidentAnalysisProps) {
                   <Button
                     variant="outline"
                     className="flex items-center space-x-2"
-                    onClick={() => handleDownload(analysisResult.pdf_path)}
                   >
                     <DocumentArrowDownIcon className="h-4 w-4" />
                     <span>Download PDF Report</span>
@@ -421,9 +372,6 @@ export function IncidentAnalysis({ onBack }: IncidentAnalysisProps) {
                     <Button
                       variant="outline"
                       className="flex items-center space-x-2"
-                      onClick={() =>
-                        handleDownload(analysisResult.raw_ai_output_path)
-                      }
                     >
                       <DocumentArrowDownIcon className="h-4 w-4" />
                       <span>Download Raw Output</span>
