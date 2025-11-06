@@ -1,4 +1,4 @@
-# app/utils/git_util.py
+# git_util.py
 
 import os
 import shutil
@@ -31,96 +31,27 @@ class GitUtil:
     def _sanitize_yaml_content(content: str) -> str:
         """
         Clean AI-generated YAML by removing markdown fences, stripping
-        surrounding quotes, removing trailing model/usage metadata,
-        removing wrapper tokens like content='...', usage=None, and removing
-        obvious errors or quota messages.
-
-        Returns cleaned YAML text (may contain multiple '- name:' tasks).
+        surrounding quotes, and removing trailing model/usage metadata.
         """
         if not content:
-            return ""
+            return "# Empty playbook"
 
-        # Convert to str in case the upstream AI connector returns non-string
-        cleaned = str(content).strip()
+        cleaned = content.strip()
 
-        # Remove full quota/error messages lines (keep only useful YAML)
-        cleaned_lines = []
-        for line in cleaned.splitlines():
-            if not line:
-                cleaned_lines.append("")
-                continue
-            # Skip lines that clearly belong to error messages or quota diagnostics
-            if re.search(r"\bERROR\b|\bQuota exceeded\b|\bgenerativelanguage\b|quota_metric", line, flags=re.IGNORECASE):
-                # stop processing any trailing diagnostic blocks
-                break
-            cleaned_lines.append(line.rstrip())
+        cleaned = re.sub(r"^```(?:yaml|yml)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
 
-        cleaned = "\n".join(cleaned_lines).strip()
+        if (cleaned.startswith('"') and cleaned.endswith('"')) or (cleaned.startswith("'") and cleaned.endswith("'")):
+            cleaned = cleaned[1:-1].strip()
 
-        # Remove triple-backtick fences and language tags
-        cleaned = re.sub(r"^```(?:yaml|yml)?\s*", "", cleaned, flags=re.IGNORECASE | re.MULTILINE)
-        cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.IGNORECASE | re.MULTILINE)
-
-        # Some connectors return "content='...'" or "content=\"...\"" or content: {...}
-        # Try to extract content inside quotes after content= or content:
-        m = re.search(r"content\s*=\s*['\"](.+?)['\"]\s*(?:usage\s*=\s*None)?$", cleaned, flags=re.DOTALL)
-        if m:
-            cleaned = m.group(1).strip()
-        else:
-            # try content: '...'
-            m2 = re.search(r"content\s*:\s*['\"](.+?)['\"]\s*$", cleaned, flags=re.DOTALL | re.IGNORECASE)
-            if m2:
-                cleaned = m2.group(1).strip()
-
-        # Remove trailing connector metadata like: usage={...} model='...' finish_reason='stop'
         cleaned = re.sub(r"\s+usage=\{.*$", "", cleaned, flags=re.DOTALL)
         cleaned = re.sub(r"\s+model=['\"][^'\"]+['\"].*$", "", cleaned, flags=re.DOTALL)
         cleaned = re.sub(r"\s+finish_reason=['\"][^'\"]+['\"].*$", "", cleaned, flags=re.DOTALL)
 
-        # Remove solitary usage=None tokens
-        cleaned = re.sub(r"\busage\s*=\s*None\b", "", cleaned)
-        cleaned = re.sub(r"\busage:\s*None\b", "", cleaned)
-
-        # Strip away any "response:" or "content:" prefixes at start of line
-        cleaned = re.sub(r"(?m)^\s*(Response|response|Content|content)\s*[:=]\s*", "", cleaned)
-
-        # Remove any leading/trailing non-yaml junk lines; keep lines that look like yaml
-        lines = [ln.rstrip() for ln in cleaned.splitlines() if ln is not None]
-        # Dedent common indentation
+        lines = [line.rstrip() for line in cleaned.splitlines()]
         cleaned = dedent("\n".join(lines)).strip()
 
-        # If the model returned a wrapper that starts with "tasks:" (common), unwrap it
-        if cleaned.startswith("tasks:"):
-            # remove the first line "tasks:" and keep the rest
-            rest = cleaned.splitlines()[1:]
-            cleaned = "\n".join(rest).strip()
-
-        # If the content still contains Python-like repr pieces like "usage=None" in-line, remove them
-        cleaned = re.sub(r"\s*usage=None\s*", "", cleaned)
-        cleaned = re.sub(r"\s*usage: None\s*", "", cleaned)
-
-        # Remove accidental repeated "content=''" pieces left in text
-        cleaned = re.sub(r"content=['\"]['\"]", "", cleaned)
-
-        # Final safety: if no '- name:' present, try to transform simple task lines into a task
-        if "- name:" not in cleaned:
-            # If there are lines that look like "Do X" or similar, create a fallback task
-            if cleaned.strip():
-                # keep only first non-empty line for fallback summary
-                first_line = ""
-                for ln in cleaned.splitlines():
-                    if ln.strip():
-                        first_line = ln.strip()
-                        break
-                cleaned = f"- name: {first_line}\n  debug:\n    msg: 'Auto-generated task from AI response. Please verify.'"
-            else:
-                # completely empty -> return empty so caller can decide fallback
-                return ""
-
-        # Sanity: remove any leftover stray tokens like "usage=None" or "ERROR:" again
-        cleaned = "\n".join([ln for ln in cleaned.splitlines() if "usage=" not in ln and "ERROR:" not in ln and "Quota exceeded" not in ln])
-
-        return cleaned.strip()
+        return cleaned
 
     def _ensure_path(self, automation_name: str) -> str:
         sanitized_name = self._sanitize_name(automation_name)
@@ -139,24 +70,15 @@ class GitUtil:
             raise
 
     def update_readme(self, automation_name: str, step_content: str, step_count: int) -> None:
-        """
-        Append step details into README.md (single file) instead of creating per-step files.
-        """
         try:
             target = self._ensure_path(automation_name)
-            readme_path = os.path.join(target, "README.md")
+            step_file = os.path.join(target, f"step_{step_count}.md")
 
-            header = ""
-            if not os.path.exists(readme_path):
-                header = f"# {automation_name}\n\n"
-
-            with open(readme_path, "a", encoding="utf-8") as f:
-                if header:
-                    f.write(header)
+            with open(step_file, "a", encoding="utf-8") as f:
                 f.write(f"\n\n### Step {step_count}\n{step_content}\n")
 
-            print(f"🪶 Step {step_count} appended to README: {readme_path}")
-            logging.info(f"🪶 Step {step_count} appended to README: {readme_path}")
+            print(f"🪶 Step {step_count} written to: {step_file}")
+            logging.info(f"🪶 Step {step_count} appended to: {step_file}")
         except Exception as e:
             logging.error(f"❌ Error updating README: {e}")
             raise

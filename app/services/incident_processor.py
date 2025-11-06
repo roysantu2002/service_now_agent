@@ -302,6 +302,46 @@ Rules:
             logger.error("Failed to save JSON output", error=str(e))
             raise
 
+    def _clean_work_notes(self, work_notes: str) -> str:
+        """Return cleaned, line-by-line work notes with punctuation."""
+        if not work_notes:
+            return ""
+
+        import re
+
+        text = work_notes.strip()
+
+        # Split on timestamps
+        entries = re.split(
+            r"\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+-.*?\(Work notes\)\s*",
+            text
+        )
+
+        cleaned_lines = []
+
+        for entry in entries:
+            entry = entry.strip()
+            if not entry:
+                continue
+
+            # Remove emails
+            entry = re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", "", entry)
+
+            # Remove phone numbers
+            entry = re.sub(r"\+?\d[\d\s\-\(\)]{7,}", "", entry)
+
+            # Normalize whitespace
+            entry = re.sub(r"\s+", " ", entry).strip()
+
+            # Add punctuation if missing
+            if entry and not entry.endswith("."):
+                entry += "."
+
+            cleaned_lines.append(entry)
+
+        return "\n".join(cleaned_lines)
+
+
     # -------------------------------------------------------------------
     async def analyze_incident_only(self, sys_id: str, analysis_type: str = "general") -> Dict[str, Any]:
         """Analyze incident, save PDF, JSON, and Markdown outputs."""
@@ -314,9 +354,22 @@ Rules:
         try:
             incident = await self.servicenow.get_incident(sys_id)
             incident_dict = incident.model_dump()
+            
+            print("Incident data retrieved", {sys_id})
+            print(incident_dict)
+            work_notes = incident_dict.get("work_notes", "") or ""
+            cleaned_work_notes = self._clean_work_notes(work_notes)
+
+            if cleaned_work_notes:
+                print("\nCleaned Work Notes:\n", cleaned_work_notes, "\n")
+            
+        
             compliance_result = await self.compliance_filter.filter_data(incident_dict, ComplianceLevel.INTERNAL)
 
             prompt = self._build_ai_prompt(compliance_result.filtered_data, analysis_type)
+            
+            print("AI Prompt:\n", prompt, "\n")
+           
             ai_analysis = await self.ai_service.generate_text({
                 "prompt": prompt,
                 "context": {"analysis_type": analysis_type},

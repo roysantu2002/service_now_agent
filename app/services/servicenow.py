@@ -83,7 +83,7 @@ class ServiceNowConnector(BaseServiceNowConnector):
         if not self.client:
             await self.initialize()
         try:
-            url = f"{self.base_url}/api/now/table/incident/{sys_id}"
+            url = f"{self.base_url}/api/now/table/incident/{sys_id}?sysparm_display_value=true"
             response = await self.client.get(url)
             
             if response.status_code == 404:

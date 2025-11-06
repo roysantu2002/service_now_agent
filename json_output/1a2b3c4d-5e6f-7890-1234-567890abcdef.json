@@ -1,0 +1,25 @@
+{
+  "id": "1a2b3c4d-5e6f-7890-1234-567890abcdef",
+  "issue": "Unspecified Logi Software Issue Reported",
+  "issue_category": "Software Bug",
+  "category": null,
+  "level": "Unknown",
+  "description": "",
+  "steps_to_resolve": [
+    "Verify incident details and confirm affected services.",
+    "Check server/network logs for errors.",
+    "Review recent changes or deployments.",
+    "Attempt to reproduce in test environment.",
+    "Check hardware and connectivity.",
+    "Run diagnostics (ping, traceroute, netstat).",
+    "Validate firewall and routing policies.",
+    "Apply safe temporary mitigation.",
+    "Update stakeholders and plan next steps.",
+    "Perform root cause analysis and prevention plan."
+  ],
+  "technical_details": "Affected CI: unknown | Group: ",
+  "complete_description": "",
+  "analyzed_at": "2025-11-05T06:37:37.336310",
+  "ai_model": null,
+  "confidence_score": null
+}

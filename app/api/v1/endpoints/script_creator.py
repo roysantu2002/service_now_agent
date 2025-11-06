@@ -1,11 +1,4 @@
-"""
-script_creator.py
-
-Generates an Ansible playbook and supporting files from an AI-generated set of
-10 resolution steps. Writes a single `steps.md`, individual `step_N.md` files,
-creates a consolidated playbook YAML, initializes a local git project, and
-optionally creates an Ansible Tower project/template (best-effort).
-"""
+# app/routers/script_creator.py
 
 from __future__ import annotations
 
@@ -27,8 +20,6 @@ logger = structlog.get_logger(__name__)
 router = APIRouter()
 
 
-# ---------------------- Dependencies ----------------------
-
 def get_script_services() -> ScriptServices:
     return ScriptServices()
 
@@ -36,8 +27,6 @@ def get_script_services() -> ScriptServices:
 def get_script_util(provider: Optional[str] = Query(None)) -> ScriptUtil:
     return ScriptUtil(provider_name=provider)
 
-
-# ---------------------- Use Case Endpoints ----------------------
 
 @router.post("/usecases/submit", summary="Submit a new automation use case")
 async def submit_usecase(
@@ -75,9 +64,6 @@ async def fetch_usecase(uid: str, services: ScriptServices = Depends(get_script_
         logger.error("Error fetching use case", uid=uid, error=str(exc))
         raise HTTPException(status_code=500, detail=f"Error fetching use case: {str(exc)}")
 
-
-# ---------------------- Script Creation ----------------------
-
 @router.post("/script/create", summary="Generate automation script for use case")
 async def create_script(
     payload: Dict[str, Any] = Body(..., example={
@@ -89,6 +75,8 @@ async def create_script(
     script_util: ScriptUtil = Depends(get_script_util),
     services: ScriptServices = Depends(get_script_services),
 ):
+    import textwrap  # local import to avoid changing file-level imports
+
     uid = payload.get("uid")
     name = payload.get("name")
     query = payload.get("query")
@@ -97,11 +85,23 @@ async def create_script(
         raise HTTPException(status_code=400, detail="uid, name and query are required")
 
     try:
-        # --- Request exactly 10 numbered steps ---
+        # -------------------------
+        # 1) Request exactly 10 numbered steps (strict format)
+        # -------------------------
         prompt_steps = (
-            "Provide exactly 10 numbered, concise resolution steps to achieve the following automation use case:\n"
+            f"You are an expert Ansible automation engineer.\n\n"
+            f"Provide EXACTLY 10 concise numbered steps required to automate the "
+            f"following use case in Ansible (include pre, main and post tasks where relevant):\n\n"
             f"{query}\n\n"
-            "Output as numbered lines like:\n1. Step one\n2. Step two\n...\n10. Step ten"
+            "Rules:\n"
+            "- Output ONLY numbered lines (no headings, no explanation). Example:\n"
+            "  1. Check service status\n"
+            "  2. Restart service\n"
+            "  ...\n"
+            "  10. Verify logs\n"
+            "- DO NOT include Ansible installation steps, package installation steps, or documentation steps.\n"
+            "- Keep each step short (one line).\n"
+            "- If you cannot produce 10, output as many as you can and the caller will request a strict re-output."
         )
 
         ai_response = await script_util.generate_script(query=prompt_steps)
@@ -110,17 +110,23 @@ async def create_script(
         if not ai_response:
             raise Exception("Empty AI response for steps")
 
-        # --- Extract numbered steps robustly ---
-        step_matches = re.findall(r"^\s*\d+\.\s*(.+)$", ai_response, flags=re.MULTILINE)
+        ai_response_str = str(ai_response)
+        # Remove common headings if model included them
+        ai_response_str = ai_response_str.replace("Pre-tasks:", "").replace("Main tasks:", "").replace("Post-tasks:", "")
 
-        # If not 10, retry once asking explicitly for a strict reformat
+        # Extract numbered steps robustly (accepts "1. x", "1) x", "1 - x")
+        step_matches = re.findall(r"^\s*\d+\s*[\.\-\)]\s*(.+)$", ai_response_str, flags=re.MULTILINE)
+
+        # Retry once if not exactly 10
         if len(step_matches) != 10:
             logger.info("AI returned %d steps, retrying to coerce to exactly 10", len(step_matches))
             ai_response_retry = await script_util.generate_script(
-                query=(prompt_steps + "\n\nIf you did not provide exactly 10 numbered steps, please re-output exactly 10 now."),
+                query=prompt_steps + "\n\nIf you did not provide exactly 10 numbered steps, please re-output exactly 10 now."
             )
             logger.info("AI retry response (steps)", response=ai_response_retry)
-            step_matches = re.findall(r"^\s*\d+\.\s*(.+)$", ai_response_retry or ai_response, flags=re.MULTILINE)
+            ai_response_retry_str = str(ai_response_retry) if ai_response_retry else ai_response_str
+            ai_response_retry_str = ai_response_retry_str.replace("Pre-tasks:", "").replace("Main tasks:", "").replace("Post-tasks:", "")
+            step_matches = re.findall(r"^\s*\d+\s*[\.\-\)]\s*(.+)$", ai_response_retry_str, flags=re.MULTILINE)
 
         # Deterministic padding/truncation to ensure exactly 10 steps
         steps: List[str] = []
@@ -131,14 +137,18 @@ async def create_script(
             while len(steps) < 10:
                 steps.append(f"Implementation step {len(steps) + 1} for {name}")
 
-        # --- Prepare local project and write steps ---
+        # -------------------------
+        # 2) Prepare local project and write consolidated steps.md
+        # -------------------------
         git_util = GitUtil()
         local_path = git_util.update_copy(name)
         logger.info("Local path prepared", path=local_path)
 
         steps_md_path = git_util.write_steps_md(name, steps)
 
-        # Compose playbook header
+        # -------------------------
+        # 3) For each step ask LLM for YAML tasks, sanitize and assemble playbook
+        # -------------------------
         playbook_header = (
             "---\n"
             f"- name: {name}\n"
@@ -151,31 +161,96 @@ async def create_script(
         task_snippets: List[str] = []
 
         for i, step in enumerate(steps, start=1):
+            # Strict prompt for a single, well-formed YAML task block
             sub_query = (
-                f"Provide a valid Ansible YAML snippet for the following step:\n"
-                f"Step {i}: {step}\n\n"
-                "Ensure it begins with '- name:' and includes one or more valid tasks only. "
-                "Do NOT include markdown fences or explanations."
+                "You are an Ansible expert. Provide ONLY valid Ansible task YAML for the following single step.\n\n"
+                "HARD RULES:\n"
+                "- Output only YAML (no markdown fences, no commentary, no surrounding code blocks).\n"
+                "- Produce ONE and only ONE '- name:' task block that implements this step.\n"
+                "- Do NOT include top-level play headers (---, hosts:, gather_facts: etc.).\n"
+                "- Do NOT provide multiple alternative commands, do NOT repeat the same task.\n"
+                "- Avoid including installation or documentation tasks.\n\n"
+                f"Step {i}: {step}\n"
             )
 
             sub_response = await script_util.generate_script(query=sub_query)
-            logger.info(f"AI YAML response for Step {i}", response=sub_response)
+            logger.info("AI YAML response for Step %d", i, response=sub_response)
 
-            cleaned = git_util._sanitize_yaml_content(sub_response)
+            # Convert to string and do basic cleanup
+            ai_text = str(sub_response or "").strip()
 
-            # Proper YAML indentation for inclusion under tasks
-            indented = "\n".join(
-                [("    " + line if line.strip() else "") for line in cleaned.splitlines()]
-            )
+            # Quick rejection if response clearly contains an error/quota
+            if re.search(r"Quota exceeded|ERROR:|quota_metric", ai_text, flags=re.IGNORECASE):
+                logger.warning("LLM returned an error/quota message for step %d", i)
+                cleaned = ""
+            else:
+                # 1) Use GitUtil sanitizer for typical wrappers (this should remove fences, usage=..., content=... etc.)
+                cleaned = git_util._sanitize_yaml_content(ai_text)
+
+                # 2) Convert escaped newline sequences into actual newlines (some connectors return "\n")
+                if "\\n" in cleaned:
+                    cleaned = cleaned.replace("\\n", "\n")
+
+                # 3) Strip outer quotes if still present
+                if (cleaned.startswith("'") and cleaned.endswith("'")) or (cleaned.startswith('"') and cleaned.endswith('"')):
+                    cleaned = cleaned[1:-1].strip()
+
+                # 4) Remove any trailing "usage=None" or similar tokens that slipped through
+                cleaned = re.sub(r"\busage\s*=\s*None\b", "", cleaned)
+                cleaned = re.sub(r"\busage\s*:\s*None\b", "", cleaned)
+                cleaned = re.sub(r"\bcontent\s*=\s*['\"].*?['\"]", "", cleaned)
+
+                # 5) If model returned multiple '- name:' blocks, keep only the first (we want one clear task per step)
+                blocks = re.findall(r"(?s)(^- name:.*?)(?=(?:\n- name:)|\Z)", cleaned, flags=re.MULTILINE)
+                if blocks:
+                    # choose first non-empty block that contains '- name:'
+                    first_block = None
+                    for b in blocks:
+                        if "- name:" in b:
+                            first_block = b.strip()
+                            break
+                    cleaned = first_block if first_block else blocks[0].strip()
+                else:
+                    # If no '- name:' found, keep cleaned as-is and handle fallback later
+                    cleaned = cleaned.strip()
+
+                # 6) Remove any leading 'tasks:' wrapper if present
+                if cleaned.lower().startswith("tasks:"):
+                    cleaned = "\n".join(cleaned.splitlines()[1:]).strip()
+
+            # If sanitized cleaned is empty or invalid, produce fallback debug task
+            if not cleaned or "- name:" not in cleaned:
+                cleaned = (
+                    f"- name: Implementation step {i} for {name}\n"
+                    "  debug:\n"
+                    "    msg: 'No valid YAML returned by AI for this step; manual implementation required.'"
+                )
+
+            # Ensure final cleaned text has no stray error lines
+            cleaned_lines = [ln for ln in cleaned.splitlines() if not re.search(r"Quota exceeded|ERROR:|quota_metric", ln, flags=re.IGNORECASE)]
+            cleaned = "\n".join(cleaned_lines).strip()
+
+            # Indent each line by FOUR spaces so it sits correctly under "  tasks:" (two spaces for play + two extra)
+            indented = "\n".join([("    " + ln if ln.strip() else "") for ln in cleaned.splitlines()])
             task_snippets.append(indented)
 
-            # Update README with actual AI content
-            git_util.update_readme(name, f"Step {i}: {step}\n{sub_response}", i)
+            # Append step details into README (single file). If GitUtil.update_readme still creates step_N.md,
+            # the fallback will append to README directly.
+            try:
+                git_util.update_readme(name, f"Step {i}: {step}\n\nAI YAML:\n{cleaned}", i)
+            except Exception:
+                try:
+                    readme_path = os.path.join(git_util._ensure_path(name), "README.md")
+                    with open(readme_path, "a", encoding="utf-8") as rf:
+                        rf.write(f"\n\n### Step {i}\nStep: {step}\n\nAI YAML:\n{cleaned}\n")
+                except Exception as e:
+                    logger.warning("Failed to append to README directly for step %d: %s", i, str(e))
 
-        # --- Combine everything ---
+        # -------------------------
+        # 4) Combine playbook and write/push
+        # -------------------------
         playbook = playbook_header + "\n".join(task_snippets) + "\n"
 
-        # Create and push git project
         git_util.git_project_create(
             name,
             content=playbook,
