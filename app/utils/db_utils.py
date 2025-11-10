@@ -240,9 +240,9 @@ async def initialize_tables() -> None:
         async with get_db_connection() as conn:
 
             # Drop and recreate incident_analysis table with UNIQUE(sys_id)
-            await conn.execute("""
-                DROP TABLE IF EXISTS incident_analysis CASCADE;
-            """)
+            # await conn.execute("""
+            #     DROP TABLE IF EXISTS incident_analysis CASCADE;
+            # """)
 
             # Ensure webhook_events exists first (because of FK)
             await conn.execute("""
@@ -266,7 +266,7 @@ async def initialize_tables() -> None:
 
             # Recreate incident_analysis properly
             await conn.execute("""
-                CREATE TABLE incident_analysis (
+                CREATE TABLE IF NOT EXISTS incident_analysis (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     webhook_event_id UUID REFERENCES webhook_events(id) ON DELETE CASCADE,
                     incident_id VARCHAR(100) NOT NULL,

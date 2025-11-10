@@ -116,7 +116,11 @@ export function EUSMain() {
               data={incidents}
               columns={[
                 { header: 'Incident ID', accessorKey: 'incident_id' },
-                { header: 'Sys ID', accessorKey: 'sys_id' },
+                {
+                  header: 'Short Description',
+                  cell: ({ row }) =>
+                    row.original?.payload?.result?.short_description ?? '-',
+                },
                 { header: 'Action', accessorKey: 'action_type' },
                 { header: 'Status', accessorKey: 'status' },
                 {
