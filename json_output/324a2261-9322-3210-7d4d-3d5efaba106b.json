@@ -1,0 +1,25 @@
+{
+  "id": "324a2261-9322-3210-7d4d-3d5efaba106b",
+  "issue": "Tomcat Exception list request",
+  "issue_category": "Other",
+  "category": null,
+  "level": "Unknown",
+  "description": "A request to run a script and share the list of Tomcat BCM for hostname: hostname17.",
+  "steps_to_resolve": [
+    "Verify the hostname provided in the incident.",
+    "Access the server where Tomcat is installed.",
+    "Open a terminal or command prompt.",
+    "Navigate to the Tomcat installation directory.",
+    "Locate the script that generates the Tomcat BCM list.",
+    "Execute the script with the appropriate parameters.",
+    "Capture the output of the script.",
+    "Review the output for any errors or exceptions.",
+    "Format the output into a readable list.",
+    "Share the formatted list with the requester."
+  ],
+  "technical_details": "The incident relates to Tomcat running on hostname17. The script execution may require specific permissions. Ensure that the Tomcat service is running and accessible.",
+  "complete_description": "A request to run a script and share the list of Tomcat BCM for hostname: hostname17. The incident relates to Tomcat running on hostname17. The script execution may require specific permissions. Ensure that the Tomcat service is running and accessible. Steps to resolve include verifying the hostname, accessing the server, executing the script, and sharing the output.",
+  "analyzed_at": "2026-01-20T15:10:06.688792",
+  "ai_model": null,
+  "confidence_score": null
+}

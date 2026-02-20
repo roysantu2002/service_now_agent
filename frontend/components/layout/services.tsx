@@ -28,7 +28,7 @@ const services: Service[] = [
   
   {
     id: "log-analyzer",
-    name: "Smart Log Analyzer",
+    name: "Compute Services[Log Analyzer]",
     description:
       "Intelligent log analysis with anomaly detection, pattern recognition, and auto root-cause summaries.",
     icon: "DocumentMagnifyingGlassIcon",
@@ -39,7 +39,7 @@ const services: Service[] = [
   },
   {
     id: "script-bot",
-    name: "Script Bot",
+    name: "CodeGenie",
     description:
       "AI-powered automation bot that writes, validates, and executes IT and DevOps scripts across environments.",
     icon: "WrenchScrewdriverIcon",
@@ -60,16 +60,16 @@ const services: Service[] = [
     category: "support",
   },
   {
-    id: "servicedesk",
-    name: "Service Desk Automation",
-    description:
-      "Smart ticketing, classification, and resolution workflows using generative AI.",
-    icon: "WrenchScrewdriverIcon",
-    color: "from-blue-500 to-cyan-600",
-    endpoint: "/api/servicedesk",
-    enabled: true,
-    category: "operations",
-  },
+  id: "database-services",
+  name: "Database Services AI Automation",
+  description:
+    "AI-powered database incident triage, root cause analysis, and resolution guidance for faster, error-free DB operations.",
+  icon: "WrenchScrewdriverIcon",
+  color: "from-blue-500 to-cyan-600",
+  endpoint: "/api/database-services",
+  enabled: true,
+  category: "operations",
+},
   {
     id: "chatbot",
     name: "Conversational AI Chatbot",
@@ -84,7 +84,7 @@ const services: Service[] = [
 
   {
     id: "incident",
-    name: "Incident Management",
+    name: "Middleware Services",
     description:
       "AI-powered detection, triage, and resolution integrated with ServiceNow and Jira.",
     icon: "ExclamationTriangleIcon",

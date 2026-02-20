@@ -15,20 +15,11 @@ export const metadata: Metadata = {
   viewport: 'width=device-width, initial-scale=1, maximum-scale=5',
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <AuthProvider>
             <QueryProvider>
               {children}
@@ -36,10 +27,7 @@ export default function RootLayout({
                 position="top-right"
                 toastOptions={{
                   duration: 4000,
-                  style: {
-                    background: '#363636',
-                    color: '#fff',
-                  },
+                  style: { background: '#363636', color: '#fff' },
                 }}
               />
             </QueryProvider>

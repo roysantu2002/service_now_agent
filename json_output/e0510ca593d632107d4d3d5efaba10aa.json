@@ -1,0 +1,25 @@
+{
+  "id": "e0510ca593d632107d4d3d5efaba10aa",
+  "issue": "Test Ticket Modified",
+  "issue_category": "Other",
+  "category": null,
+  "level": "Unknown",
+  "description": "Test Ticket Modified",
+  "steps_to_resolve": [
+    "Review the incident details in ServiceNow.",
+    "Verify the priority and urgency of the incident.",
+    "Check the assignment group for proper routing.",
+    "Contact the caller for additional information if needed.",
+    "Investigate any related incidents or problems.",
+    "Document any findings in the work notes.",
+    "Update the incident state as necessary.",
+    "Communicate with the caller about the status.",
+    "Ensure all relevant fields are filled out correctly.",
+    "Close the incident if resolved or escalate if necessary."
+  ],
+  "technical_details": "Incident number: INC0010001, opened at: 2026-01-06 21:19:04, current state: New, assigned to: None, priority: 5 - Planning, urgency: 3 - Low, impact: 3 - Low, company: ACME South America.",
+  "complete_description": "The incident titled 'Test Ticket Modified' was opened on 2026-01-06 at 21:19:04. It is categorized as 'Other' and has a low priority and urgency. The incident is currently in a New state with no assigned group or individual. The technical details include the incident number and the company involved. Recommended actions include reviewing the incident, verifying details, and ensuring proper communication with the caller.",
+  "analyzed_at": "2026-01-14T06:18:49.442607",
+  "ai_model": null,
+  "confidence_score": null
+}

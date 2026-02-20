@@ -1,0 +1,25 @@
+{
+  "id": "892b42d69366f2107d4d3d5efaba1048",
+  "issue": "Oracle Tablespace Space Alert – PROD",
+  "issue_category": "Database Issue",
+  "category": null,
+  "level": "Unknown",
+  "description": "Tablespace USERS_TBS has reached 90% utilization in PROD database. Please analyze current usage and extend tablespace to avoid application impact.",
+  "steps_to_resolve": [
+    "Log into the database server hosting the PROD database.",
+    "Connect to the Oracle database using SQL*Plus or a similar tool.",
+    "Run the query to check current tablespace usage: SELECT tablespace_name, total_space, used_space, free_space FROM dba_tablespace_usage_metrics WHERE tablespace_name = 'USERS_TBS';",
+    "Analyze the output to confirm the 90% utilization.",
+    "Identify the segments consuming the most space using: SELECT segment_name, bytes FROM dba_segments WHERE tablespace_name = 'USERS_TBS' ORDER BY bytes DESC;",
+    "Determine if any segments can be archived or purged to free up space.",
+    "If extension is necessary, prepare a script to extend the tablespace, e.g., ALTER DATABASE DATAFILE 'path_to_datafile' RESIZE new_size;",
+    "Execute the script to extend the tablespace.",
+    "Verify the extension by re-running the tablespace usage query.",
+    "Document the changes made and notify the relevant stakeholders about the resolution."
+  ],
+  "technical_details": "Affected system: PROD Oracle Database. Current tablespace 'USERS_TBS' utilization is at 90%. No errors reported in logs, but potential application impact if not resolved. Configuration settings for tablespace need to be reviewed post-resolution.",
+  "complete_description": "Incident reported for Oracle Tablespace Space Alert in PROD. The USERS_TBS tablespace has reached 90% utilization, which could impact application performance. Technical analysis confirms the need for extension or cleanup. Recommended actions include checking current usage, identifying large segments, and extending the tablespace as necessary.",
+  "analyzed_at": "2026-02-02T07:22:35.291251",
+  "ai_model": null,
+  "confidence_score": null
+}

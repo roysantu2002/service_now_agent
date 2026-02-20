@@ -363,8 +363,112 @@
             "required_information": ["detection_source", "malware_type", "affected_systems"]
           }
         }
+      },
+
+      "vdi": {
+        "display_name": "Virtual Desktop Infrastructure",
+        "keywords": [
+          "vdi", "virtual desktop", "remote desktop", "cloud desktop", "citrix", "horizon",
+          "vdi login", "cannot login", "vdi not loading", "vdi icon missing",
+          "protocol error", "agent unreachable", "desktop pool", "vm not responding",
+          "session timeout", "ssl error", "profile not loading", "entitlement issue",
+          "slow vdi", "vdi performance"
+        ],
+        "tier_rules": {
+          "L1": {
+            "description": "First Level VDI Support",
+            "escalation_threshold": 30,
+            "complexity": "basic",
+            "skills_required": [
+              "basic_vdi_troubleshooting", "user_validation",
+              "basic_network_checks", "session_reset"
+            ],
+            "keywords": [
+              "cannot login", "vdi login", "vdi icon missing",
+              "entitlement issue", "session timeout",
+              "basic connectivity", "password reset"
+            ]
+          },
+          "L2": {
+            "description": "Advanced VDI Support",
+            "escalation_threshold": 60,
+            "complexity": "intermediate",
+            "skills_required": [
+              "vdi_infrastructure", "vm_logs_analysis",
+              "broker_debugging", "certificate_debugging"
+            ],
+            "keywords": [
+              "agent unreachable", "protocol error", "ssl error",
+              "hostname not resolving", "profile load failure",
+              "intermittent disconnections", "vm not responding"
+            ]
+          },
+          "L3": {
+            "description": "Expert VDI Engineering",
+            "escalation_threshold": 120,
+            "complexity": "advanced",
+            "skills_required": [
+              "vdi_architecture", "hypervisor_management",
+              "master_image_management", "advanced_network_certificates"
+            ],
+            "keywords": [
+              "pool failure", "master image issue",
+              "hypervisor issue", "backend profile corruption",
+              "infrastructure outage", "complex vdi failures"
+            ]
+          }
+        },
+        "playbooks": {
+          "vdi_login_failure": {
+            "steps": [
+              "Validate user credentials and entitlement",
+              "Check VDI pool availability",
+              "Reset stale or active sessions",
+              "Verify authentication and profile services",
+              "Check VDI agent status",
+              "Escalate to VDI L2 if unresolved"
+            ],
+            "estimated_resolution_time": 30,
+            "required_information": ["username", "error_message", "pool_name", "last_successful_login"]
+          },
+          "vdi_connection_issue": {
+            "steps": [
+              "Check internet and VPN connectivity",
+              "Validate VM reachability",
+              "Confirm protocol configuration",
+              "Test connection to broker",
+              "Review logs for failures",
+              "Escalate to L2 if needed"
+            ],
+            "estimated_resolution_time": 45,
+            "required_information": ["username", "error_code", "connection_method"]
+          },
+          "vdi_profile_issue": {
+            "steps": [
+              "Verify profile storage availability",
+              "Check for profile corruption or lock",
+              "Reset temporary profile if possible",
+              "Check backend profile service",
+              "Escalate to VDI engineering if required"
+            ],
+            "estimated_resolution_time": 60,
+            "required_information": ["username", "profile_path", "error_message"]
+          },
+          "vdi_performance_issue": {
+            "steps": [
+              "Check VM CPU/RAM usage",
+              "Measure network latency",
+              "Reset session to clear stuck processes",
+              "Review VM logs",
+              "Escalate to L2/L3 for deep diagnostics"
+            ],
+            "estimated_resolution_time": 90,
+            "required_information": ["username", "vm_name", "performance_data"]
+          }
+        }
       }
     },
+
     "team_mappings": {
       "Network_L1": {
         "team_name": "Network Operations - Tier 1",
@@ -532,6 +636,7 @@
         "escalation_teams": []
       }
     },
+
     "escalation_rules": {
       "time_based": {
         "L1_to_L2": 30,

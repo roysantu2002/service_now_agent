@@ -1,0 +1,570 @@
+{
+  "knowledge_base": {
+    "metadata": {
+      "version": "1.0",
+      "created_date": "2025-10-29",
+      "description": "Enterprise Incident Management Knowledge Base Configuration",
+      "last_updated": "2025-10-29T12:23:35Z"
+    },
+    "categories": {
+      "network": {
+        "display_name": "Network Infrastructure",
+        "keywords": [
+          "connectivity", "network", "wifi", "ethernet", "router", "switch", "firewall",
+          "vpn", "internet", "bandwidth", "latency", "packet loss", "dns", "dhcp",
+          "network outage", "connection timeout", "network slow", "cannot connect",
+          "wired", "wireless", "lan", "wan", "subnet", "gateway", "firewall rules",
+          "port", "protocol", "tcp", "udp", "http", "https", "ftp", "ssh", "telnet",
+          "network device", "access point", "network cable", "fiber", "broadband",
+          "network monitoring", "snmp", "network performance", "throughput"
+        ],
+        "tier_rules": {
+          "L1": {
+            "description": "First Level Network Support",
+            "escalation_threshold": 30,
+            "complexity": "basic",
+            "skills_required": ["basic_networking", "ping", "traceroute", "nslookup"],
+            "keywords": [
+              "cannot connect", "wifi issues", "slow connection", "basic connectivity",
+              "password reset", "cable check", "reboot router", "basic dns"
+            ]
+          },
+          "L2": {
+            "description": "Advanced Network Support",
+            "escalation_threshold": 60,
+            "complexity": "intermediate",
+            "skills_required": ["network_analysis", "protocol_analysis", "vlan_config"],
+            "keywords": [
+              "vpn issues", "dns problems", "dhcp conflicts", "firewall rules",
+              "network performance", "packet loss", "vlan configuration", "switch config"
+            ]
+          },
+          "L3": {
+            "description": "Expert Network Engineering",
+            "escalation_threshold": 120,
+            "complexity": "advanced",
+            "skills_required": ["network_architecture", "security_protocols", "advanced_monitoring"],
+            "keywords": [
+              "network architecture", "complex routing", "security protocols",
+              "network design", "advanced troubleshooting", "protocol debugging",
+              "network optimization", "capacity planning"
+            ]
+          }
+        },
+        "playbooks": {
+          "network_connectivity": {
+            "steps": [
+              "Verify physical connections",
+              "Check network adapter status",
+              "Test with ping and traceroute",
+              "Check DNS resolution",
+              "Verify firewall settings",
+              "Contact appropriate tier support"
+            ],
+            "estimated_resolution_time": 45,
+            "required_information": ["error_messages", "affected_systems", "timeline"]
+          },
+          "vpn_issues": {
+            "steps": [
+              "Verify VPN client configuration",
+              "Check credentials and certificates",
+              "Test VPN server connectivity",
+              "Review firewall and port settings",
+              "Check for software conflicts",
+              "Escalate to network security if needed"
+            ],
+            "estimated_resolution_time": 60,
+            "required_information": ["vpn_type", "error_codes", "last_working_state"]
+          }
+        }
+      },
+      "application": {
+        "display_name": "Application Services",
+        "keywords": [
+          "application", "software", "app", "program", "system", "database",
+          "web application", "mobile app", "desktop app", "api", "service",
+          "login", "authentication", "session", "crash", "freeze", "error",
+          "bug", "feature", "functionality", "user interface", "ui", "ux",
+          "data", "backup", "restore", "performance", "slow response",
+          "timeout", "404", "500", "server error", "client error",
+          "installation", "update", "upgrade", "configuration", "deployment",
+          "release", "version", "build", "testing", "qa", "production"
+        ],
+        "tier_rules": {
+          "L1": {
+            "description": "First Level Application Support",
+            "escalation_threshold": 20,
+            "complexity": "basic",
+            "skills_required": ["basic_troubleshooting", "user_support"],
+            "keywords": [
+              "login issues", "password reset", "basic error", "user interface",
+              "simple configuration", "basic functionality", "user training"
+            ]
+          },
+          "L2": {
+            "description": "Application Development Support",
+            "escalation_threshold": 90,
+            "complexity": "intermediate",
+            "skills_required": ["application_development", "debugging", "database"],
+            "keywords": [
+              "application error", "database issues", "api problems", "performance",
+              "data corruption", "integration issues", "configuration problems"
+            ]
+          },
+          "L3": {
+            "description": "Senior Application Engineering",
+            "escalation_threshold": 180,
+            "complexity": "advanced",
+            "skills_required": ["architecture", "security", "scalability"],
+            "keywords": [
+              "architecture issues", "security vulnerabilities", "scalability",
+              "complex integration", "advanced debugging", "code review",
+              "performance optimization", "system design"
+            ]
+          }
+        },
+        "playbooks": {
+          "application_crash": {
+            "steps": [
+              "Gather crash logs and error messages",
+              "Check system requirements and compatibility",
+              "Verify recent updates or changes",
+              "Test in clean environment if possible",
+              "Reproduce the issue systematically",
+              "Escalate to development team with detailed logs"
+            ],
+            "estimated_resolution_time": 120,
+            "required_information": ["error_logs", "system_info", "reproduction_steps"]
+          },
+          "login_authentication": {
+            "steps": [
+              "Verify user credentials and account status",
+              "Check authentication server connectivity",
+              "Review password policy and expiration",
+              "Verify user permissions and roles",
+              "Check for account lockouts or restrictions",
+              "Escalate to security if suspicious activity"
+            ],
+            "estimated_resolution_time": 30,
+            "required_information": ["username", "error_message", "last_successful_login"]
+          }
+        }
+      },
+      "hardware": {
+        "display_name": "Hardware Systems",
+        "keywords": [
+          "hardware", "computer", "laptop", "desktop", "server", "workstation",
+          "printer", "scanner", "monitor", "keyboard", "mouse", "memory", "cpu",
+          "hard drive", "ssd", "ram", "processor", "motherboard", "power supply",
+          "battery", "charger", "cable", "adapter", "peripheral", "device",
+          "equipment", "machine", "system unit", "tower", "rack", "blade",
+          "storage", "raid", "san", "nas", "backup device", "ups", "cooling",
+          "fan", "temperature", "overheating", "hardware failure", "component",
+          "replacement", "warranty", "repair", "maintenance", "installation"
+        ],
+        "tier_rules": {
+          "L1": {
+            "description": "First Level Hardware Support",
+            "escalation_threshold": 15,
+            "complexity": "basic",
+            "skills_required": ["basic_hardware", "diagnostic_tools"],
+            "keywords": [
+              "power issues", "cable problems", "basic diagnostics", "reset",
+              "peripheral connection", "simple replacement", "warranty check"
+            ]
+          },
+          "L2": {
+            "description": "Advanced Hardware Support",
+            "escalation_threshold": 45,
+            "complexity": "intermediate",
+            "skills_required": ["hardware_diagnostics", "component_replacement"],
+            "keywords": [
+              "component failure", "memory issues", "disk problems", "motherboard",
+              "complex diagnostics", "hardware configuration", "system rebuild"
+            ]
+          },
+          "L3": {
+            "description": "Senior Hardware Engineering",
+            "escalation_threshold": 120,
+            "complexity": "advanced",
+            "skills_required": ["advanced_diagnostics", "system_architecture"],
+            "keywords": [
+              "server hardware", "storage systems", "complex failures",
+              "architecture issues", "capacity planning", "hardware design"
+            ]
+          }
+        },
+        "playbooks": {
+          "hardware_failure": {
+            "steps": [
+              "Perform basic hardware diagnostics",
+              "Check power and connections",
+              "Run memory and disk tests",
+              "Document error codes and symptoms",
+              "Determine warranty and replacement options",
+              "Coordinate hardware replacement if needed"
+            ],
+            "estimated_resolution_time": 60,
+            "required_information": ["error_codes", "system_model", "warranty_info"]
+          },
+          "server_issues": {
+            "steps": [
+              "Check server status and logs",
+              "Verify hardware components",
+              "Test power and cooling systems",
+              "Check storage subsystem",
+              "Review system alerts and monitoring",
+              "Escalate to infrastructure team if complex"
+            ],
+            "estimated_resolution_time": 90,
+            "required_information": ["server_model", "error_logs", "impact_assessment"]
+          }
+        }
+      },
+      "software": {
+        "display_name": "Software Systems",
+        "keywords": [
+          "software", "operating system", "windows", "linux", "macos", "android",
+          "ios", "office", "microsoft", "adobe", "autocad", "sap", "oracle",
+          "database", "sql", "mysql", "postgresql", "mongodb", "oracle db",
+          "installation", "uninstallation", "update", "patch", "license",
+          "activation", "serial number", "key", "compatibility", "version",
+          "configuration", "setting", "preference", "profile", "driver",
+          "firmware", "boot", "startup", "shutdown", "restart", "recovery",
+          "backup", "restore", "migration", "upgrade", "downgrade", "rollback"
+        ],
+        "tier_rules": {
+          "L1": {
+            "description": "First Level Software Support",
+            "escalation_threshold": 25,
+            "complexity": "basic",
+            "skills_required": ["software_installation", "basic_troubleshooting"],
+            "keywords": [
+              "installation help", "basic configuration", "license issues",
+              "simple errors", "user training", "software updates"
+            ]
+          },
+          "L2": {
+            "description": "Advanced Software Support",
+            "escalation_threshold": 75,
+            "complexity": "intermediate",
+            "skills_required": ["advanced_configuration", "system_integration"],
+            "keywords": [
+              "complex configuration", "integration issues", "database problems",
+              "performance tuning", "security settings", "system conflicts"
+            ]
+          },
+          "L3": {
+            "description": "Senior Software Engineering",
+            "escalation_threshold": 150,
+            "complexity": "advanced",
+            "skills_required": ["software_architecture", "system_design"],
+            "keywords": [
+              "system architecture", "complex integrations", "performance optimization",
+              "security architecture", "system design", "advanced troubleshooting"
+            ]
+          }
+        },
+        "playbooks": {
+          "software_installation": {
+            "steps": [
+              "Verify system requirements and compatibility",
+              "Check available licenses and permissions",
+              "Backup existing data if required",
+              "Run installation with proper permissions",
+              "Configure initial settings and preferences",
+              "Test functionality and user access"
+            ],
+            "estimated_resolution_time": 45,
+            "required_information": ["system_specs", "software_version", "user_requirements"]
+          },
+          "operating_system_issues": {
+            "steps": [
+              "Identify specific OS and version",
+              "Check system logs and event viewer",
+              "Verify recent updates and changes",
+              "Test startup and recovery options",
+              "Check disk space and system resources",
+              "Coordinate with system administrators if needed"
+            ],
+            "estimated_resolution_time": 90,
+            "required_information": ["os_version", "error_logs", "recent_changes"]
+          }
+        }
+      },
+      "security": {
+        "display_name": "Security & Compliance",
+        "keywords": [
+          "security", "threat", "attack", "malware", "virus", "ransomware",
+          "phishing", "breach", "vulnerability", "patch", "compliance",
+          "gdpr", "hipaa", "pci", "soc2", "audit", "risk", "encryption",
+          "firewall", "antivirus", "spam", "unauthorized access", "intrusion",
+          "monitoring", "alert", "incident response", "forensics", "backup",
+          "recovery", "business continuity", "disaster recovery", "access control",
+          "authentication", "authorization", "identity", "permissions", "roles",
+          "password", "mfa", "multi-factor", "certificate", "ssl", "tls",
+          "vpn", "proxy", "logging", "audit trail", "compliance", "regulation"
+        ],
+        "tier_rules": {
+          "L1": {
+            "description": "First Level Security Support",
+            "escalation_threshold": 10,
+            "complexity": "basic",
+            "skills_required": ["security_awareness", "basic_monitoring"],
+            "keywords": [
+              "password reset", "mfa issues", "basic security alert", "suspicious email",
+              "unauthorized access attempt", "security training", "policy questions"
+            ]
+          },
+          "L2": {
+            "description": "Security Operations Center",
+            "escalation_threshold": 30,
+            "complexity": "intermediate",
+            "skills_required": ["threat_analysis", "incident_response", "forensics"],
+            "keywords": [
+              "malware detection", "security incident", "vulnerability assessment",
+              "access violations", "data breach", "security monitoring"
+            ]
+          },
+          "L3": {
+            "description": "Senior Security Engineering",
+            "escalation_threshold": 60,
+            "complexity": "advanced",
+            "skills_required": ["advanced_threat_hunting", "security_architecture"],
+            "keywords": [
+              "advanced persistent threat", "zero-day vulnerability", "complex attack",
+              "security architecture", "compliance framework", "advanced forensics"
+            ]
+          }
+        },
+        "playbooks": {
+          "security_incident": {
+            "steps": [
+              "Immediately contain the threat",
+              "Preserve evidence and logs",
+              "Assess scope and impact",
+              "Notify security team and management",
+              "Implement remediation measures",
+              "Document incident and response actions"
+            ],
+            "estimated_resolution_time": 120,
+            "required_information": ["incident_type", "affected_systems", "evidence", "timeline"]
+          },
+          "malware_detection": {
+            "steps": [
+              "Isolate affected systems immediately",
+              "Run antivirus and anti-malware scans",
+              "Check for lateral movement indicators",
+              "Restore from clean backup if necessary",
+              "Update security signatures and patches",
+              "Conduct security assessment and monitoring"
+            ],
+            "estimated_resolution_time": 180,
+            "required_information": ["detection_source", "malware_type", "affected_systems"]
+          }
+        }
+      }
+    },
+    "team_mappings": {
+      "Network_L1": {
+        "team_name": "Network Operations - Tier 1",
+        "category": "network",
+        "tier": "L1",
+        "description": "First-level network support for basic connectivity issues",
+        "skills": ["basic_networking", "user_support", "initial_diagnostics"],
+        "max_concurrent_tickets": 15,
+        "average_resolution_time": 30,
+        "working_hours": "24/7",
+        "escalation_teams": ["Network_L2"]
+      },
+      "Network_L2": {
+        "team_name": "Network Engineering - Tier 2",
+        "category": "network",
+        "tier": "L2",
+        "description": "Advanced network troubleshooting and configuration",
+        "skills": ["network_analysis", "protocol_troubleshooting", "vlan_config"],
+        "max_concurrent_tickets": 10,
+        "average_resolution_time": 90,
+        "working_hours": "24/5",
+        "escalation_teams": ["Network_L3"]
+      },
+      "Network_L3": {
+        "team_name": "Senior Network Architecture",
+        "category": "network",
+        "tier": "L3",
+        "description": "Expert network engineering and architectural decisions",
+        "skills": ["network_architecture", "security_protocols", "capacity_planning"],
+        "max_concurrent_tickets": 5,
+        "average_resolution_time": 180,
+        "working_hours": "Business Hours",
+        "escalation_teams": []
+      },
+      "App_L1": {
+        "team_name": "Application Support - Tier 1",
+        "category": "application",
+        "tier": "L1",
+        "description": "First-level application support and user assistance",
+        "skills": ["user_support", "basic_application_troubleshooting"],
+        "max_concurrent_tickets": 20,
+        "average_resolution_time": 25,
+        "working_hours": "24/7",
+        "escalation_teams": ["App_L2"]
+      },
+      "App_L2": {
+        "team_name": "Application Development - Tier 2",
+        "category": "application",
+        "tier": "L2",
+        "description": "Application development and advanced troubleshooting",
+        "skills": ["application_development", "debugging", "database_support"],
+        "max_concurrent_tickets": 12,
+        "average_resolution_time": 120,
+        "working_hours": "24/5",
+        "escalation_teams": ["App_L3"]
+      },
+      "App_L3": {
+        "team_name": "Senior Application Engineering",
+        "category": "application",
+        "tier": "L3",
+        "description": "Expert application architecture and complex integrations",
+        "skills": ["software_architecture", "system_design", "advanced_debugging"],
+        "max_concurrent_tickets": 6,
+        "average_resolution_time": 240,
+        "working_hours": "Business Hours",
+        "escalation_teams": []
+      },
+      "Hardware_L1": {
+        "team_name": "Hardware Support - Tier 1",
+        "category": "hardware",
+        "tier": "L1",
+        "description": "First-level hardware support and basic diagnostics",
+        "skills": ["basic_hardware", "diagnostic_tools", "warranty_processing"],
+        "max_concurrent_tickets": 18,
+        "average_resolution_time": 20,
+        "working_hours": "24/7",
+        "escalation_teams": ["Hardware_L2"]
+      },
+      "Hardware_L2": {
+        "team_name": "Hardware Engineering - Tier 2",
+        "category": "hardware",
+        "tier": "L2",
+        "description": "Advanced hardware diagnostics and component replacement",
+        "skills": ["hardware_diagnostics", "component_replacement", "system_rebuild"],
+        "max_concurrent_tickets": 8,
+        "average_resolution_time": 90,
+        "working_hours": "Business Hours",
+        "escalation_teams": ["Hardware_L3"]
+      },
+      "Hardware_L3": {
+        "team_name": "Senior Hardware Engineering",
+        "category": "hardware",
+        "tier": "L3",
+        "description": "Expert hardware engineering and infrastructure planning",
+        "skills": ["advanced_diagnostics", "system_architecture", "capacity_planning"],
+        "max_concurrent_tickets": 4,
+        "average_resolution_time": 180,
+        "working_hours": "Business Hours",
+        "escalation_teams": []
+      },
+      "Software_L1": {
+        "team_name": "Software Support - Tier 1",
+        "category": "software",
+        "tier": "L1",
+        "description": "First-level software support and installation assistance",
+        "skills": ["software_installation", "license_management", "user_training"],
+        "max_concurrent_tickets": 22,
+        "average_resolution_time": 30,
+        "working_hours": "24/7",
+        "escalation_teams": ["Software_L2"]
+      },
+      "Software_L2": {
+        "team_name": "Software Engineering - Tier 2",
+        "category": "software",
+        "tier": "L2",
+        "description": "Advanced software configuration and system integration",
+        "skills": ["advanced_configuration", "system_integration", "performance_tuning"],
+        "max_concurrent_tickets": 10,
+        "average_resolution_time": 120,
+        "working_hours": "24/5",
+        "escalation_teams": ["Software_L3"]
+      },
+      "Software_L3": {
+        "team_name": "Senior Software Architecture",
+        "category": "software",
+        "tier": "L3",
+        "description": "Expert software architecture and system design",
+        "skills": ["software_architecture", "system_design", "performance_optimization"],
+        "max_concurrent_tickets": 5,
+        "average_resolution_time": 240,
+        "working_hours": "Business Hours",
+        "escalation_teams": []
+      },
+      "Security_L1": {
+        "team_name": "Security Operations - Tier 1",
+        "category": "security",
+        "tier": "L1",
+        "description": "First-level security support and basic threat response",
+        "skills": ["security_awareness", "basic_monitoring", "user_assistance"],
+        "max_concurrent_tickets": 12,
+        "average_resolution_time": 15,
+        "working_hours": "24/7",
+        "escalation_teams": ["Security_L2"]
+      },
+      "Security_L2": {
+        "team_name": "Security Operations Center",
+        "category": "security",
+        "tier": "L2",
+        "description": "Advanced security monitoring and incident response",
+        "skills": ["threat_analysis", "incident_response", "forensics"],
+        "max_concurrent_tickets": 8,
+        "average_resolution_time": 60,
+        "working_hours": "24/7",
+        "escalation_teams": ["Security_L3"]
+      },
+      "Security_L3": {
+        "team_name": "Senior Security Engineering",
+        "category": "security",
+        "tier": "L3",
+        "description": "Expert security engineering and advanced threat hunting",
+        "skills": ["advanced_threat_hunting", "security_architecture", "compliance"],
+        "max_concurrent_tickets": 4,
+        "average_resolution_time": 120,
+        "working_hours": "24/7",
+        "escalation_teams": []
+      }
+    },
+    "escalation_rules": {
+      "time_based": {
+        "L1_to_L2": 30,
+        "L2_to_L3": 60,
+        "max_escalation_time": 120
+      },
+      "complexity_based": {
+        "simple": "L1",
+        "moderate": "L2",
+        "complex": "L3"
+      },
+      "impact_based": {
+        "low": "L1",
+        "medium": "L2",
+        "high": "L3"
+      }
+    },
+    "sla_definitions": {
+      "response_time": {
+        "L1": 15,
+        "L2": 30,
+        "L3": 60
+      },
+      "resolution_time": {
+        "L1": 60,
+        "L2": 240,
+        "L3": 480
+      },
+      "escalation_time": {
+        "L1": 30,
+        "L2": 90,
+        "L3": 180
+      }
+    }
+  }
+}

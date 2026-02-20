@@ -1,0 +1,25 @@
+{
+  "id": "722cce9a9366f2107d4d3d5efaba1097",
+  "issue": "ASM DATA Disk Group Space Exhausted",
+  "issue_category": "Other",
+  "category": null,
+  "level": "Unknown",
+  "description": "The ASM DATA disk group has run out of space, which may affect the performance and availability of the associated services.",
+  "steps_to_resolve": [
+    "Log into the ServiceNow instance.",
+    "Navigate to the incident management module.",
+    "Search for the incident number INC0010012.",
+    "Review the incident details and confirm the issue.",
+    "Check the current disk usage on the ASM DATA disk group.",
+    "Identify any unnecessary files or backups that can be deleted.",
+    "Increase the disk space allocation for the ASM DATA disk group if possible.",
+    "Notify the relevant stakeholders about the disk space issue.",
+    "Monitor the disk space usage after the resolution steps.",
+    "Document the resolution steps taken in the incident record."
+  ],
+  "technical_details": "The ASM DATA disk group is currently at full capacity, which can lead to service disruptions. Logs indicate that no additional data can be written to the disk group. The affected systems include the database services relying on this disk group.",
+  "complete_description": "The ASM DATA disk group has run out of space, which may affect the performance and availability of the associated services. The ASM DATA disk group is currently at full capacity, which can lead to service disruptions. Logs indicate that no additional data can be written to the disk group. The affected systems include the database services relying on this disk group. To resolve this issue, log into the ServiceNow instance, navigate to the incident management module, and search for the incident number INC0010012. Review the incident details and confirm the issue. Check the current disk usage on the ASM DATA disk group and identify any unnecessary files or backups that can be deleted. If possible, increase the disk space allocation for the ASM DATA disk group. Notify the relevant stakeholders about the disk space issue and monitor the disk space usage after the resolution steps. Finally, document the resolution steps taken in the incident record.",
+  "analyzed_at": "2026-01-27T08:57:42.093648",
+  "ai_model": null,
+  "confidence_score": null
+}

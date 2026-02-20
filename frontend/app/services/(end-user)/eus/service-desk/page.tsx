@@ -1,0 +1,76 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/hooks/use-auth'
+import { Navigation } from '@/components/layout/navigation'
+import { Footer } from '@/components/layout/footer'
+import { EUSMain } from '@/components/eus/eus-main'
+// import { Chatbot } from '@/components/eus/chatbot' // your Chatbot component
+// import { IncidentRouting } from '@/components/eus/incident-routing' // your Incident Routing component
+
+export default function EUSPage() {
+  const { isAuthenticated, isLoading } = useAuth()
+  const router = useRouter()
+  const [selectedFeature, setSelectedFeature] = useState<string>('Incident Analysis')
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.push('/auth/signin')
+    }
+  }, [isAuthenticated, isLoading, router])
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return null
+  }
+
+  // Function to render selected component
+  const renderFeatureComponent = () => {
+    switch (selectedFeature) {
+      case 'Incident Analysis':
+        return <EUSMain />
+      // case 'Chatbot':
+      //   return <Chatbot />
+      // case 'Incident Routing':
+      //   return <IncidentRouting />
+      default:
+        return null
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+  
+      <main className="py-8 px-6">
+        {/* Feature cards */}
+        <div className="flex gap-4 mb-6">
+          {['Incident Analysis', 'Chatbot', 'Incident Routing'].map((feature) => (
+            <button
+              key={feature}
+              onClick={() => setSelectedFeature(feature)}
+              className={`px-4 py-2 rounded-lg font-semibold border ${
+                selectedFeature === feature
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-700'
+              } transition-colors`}
+            >
+              {feature}
+            </button>
+          ))}
+        </div>
+
+        {/* Render selected component */}
+        {renderFeatureComponent()}
+      </main>
+      <Footer />
+    </div>
+  )
+}

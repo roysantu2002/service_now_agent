@@ -101,7 +101,7 @@ export function EUSMain() {
     <div className="space-y-6">
       <Card>
         <CardHeader className="flex items-center justify-between">
-          <CardTitle className="text-lg font-semibold">ServiceNow Webhook Incidents</CardTitle>
+          <CardTitle className="text-lg font-semibold">ServiceNow Incidents</CardTitle>
           <Button onClick={() => setShowCreateModal(true)}>Create New</Button>
         </CardHeader>
 
